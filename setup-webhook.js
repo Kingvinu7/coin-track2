@@ -1,5 +1,6 @@
 // setup-webhook.js - Fixed version
-const axios = require('axios');
+import axios from 'axios';
+
 
 // Get token and URL from command line arguments (SECURE METHOD)
 const BOT_TOKEN = process.argv[2];
