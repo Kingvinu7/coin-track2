@@ -194,7 +194,7 @@ function buildReply(coin, amount) {
   lines.push(`FDV: $${fmtBig(fdv)}`);
   lines.push(`ATH: ${fmtPrice(ath)}`);
 
-  // Using monospace formatting with ``` for code blocks
+  // Using monospace formatting with ```
   return `\`\`\`\n${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\n\`\`\``;
 }
 
@@ -266,6 +266,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 🔧 FIX: Extract update from request body
+    const update = req.body;
+    
     console.log('📥 Received update:', JSON.stringify(update, null, 2));
     
     // Validate update
@@ -324,7 +327,7 @@ export default async function handler(req, res) {
 
     // Handle commands
     if (text.startsWith('/')) {
-      const command = text.substring(1).toLowerCase().split('@')[0]; // Remove @botname if present
+      const command = text.substring(1).toLowerCase().split('@'); // Remove @botname if present
       
       if (command === 'start') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
@@ -332,7 +335,7 @@ export default async function handler(req, res) {
       }
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
+          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```
       }
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
@@ -354,12 +357,12 @@ export default async function handler(req, res) {
       
       if (m) {
         let amount, symbol;
-        if (m[1] && m[2]) {
-          amount = parseFloat(m[1]);
-          symbol = m[2];
-        } else if (m[3] && m[4]) {
-          symbol = m[3];
-          amount = parseFloat(m[4]);
+        if (m && m) {
+          amount = parseFloat(m);
+          symbol = m;
+        } else if (m && m) {
+          symbol = m;
+          amount = parseFloat(m);
         }
         
         if (amount && symbol) {
