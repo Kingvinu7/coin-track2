@@ -1,7 +1,6 @@
 // setup-webhook.js - Fixed version
 import axios from 'axios';
 
-
 // Get token and URL from command line arguments (SECURE METHOD)
 const BOT_TOKEN = process.argv[2];
 const VERCEL_URL = process.argv[3];
@@ -31,7 +30,7 @@ async function setupWebhook() {
     // Set webhook
     const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
       url: WEBHOOK_URL,
-      allowed_updates: ['message']
+      allowed_updates: ['message', 'callback_query']
     });
 
     if (response.data.ok) {

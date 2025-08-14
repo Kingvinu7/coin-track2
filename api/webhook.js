@@ -266,7 +266,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const update = req.body;
+    console.log('📥 Received update:', JSON.stringify(update, null, 2));
     
     // Validate update
     if (!update || (!update.message && !update.callback_query)) {
@@ -275,6 +275,7 @@ export default async function handler(req, res) {
 
     // Handle callback queries (delete button presses)
     if (update.callback_query) {
+      console.log('🔘 Handling callback query');
       const callbackQuery = update.callback_query;
       const chatId = callbackQuery.message.chat.id;
       const messageId = callbackQuery.message.message_id;
@@ -286,6 +287,7 @@ export default async function handler(req, res) {
             chat_id: chatId,
             message_id: messageId
           });
+          console.log('✅ Message deleted successfully');
           
           // Answer the callback query to remove loading state
           await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
@@ -293,7 +295,7 @@ export default async function handler(req, res) {
           });
           
         } catch (error) {
-          console.error('Error deleting message:', error.message);
+          console.error('❌ Error deleting message:', error.message);
           // Answer callback query even if delete fails
           await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
             callback_query_id: callbackQuery.id,
@@ -306,7 +308,8 @@ export default async function handler(req, res) {
     }
 
     const msg = update.message;
-    if (!msg.text) {
+    if (!msg || !msg.text) {
+      console.log('⚠️ No text in message');
       return res.status(200).json({ ok: true, message: 'No text in message' });
     }
 
@@ -314,8 +317,10 @@ export default async function handler(req, res) {
     const messageThreadId = msg.message_thread_id;
     const text = msg.text.trim();
     const username = msg.from.username || msg.from.first_name || 'Unknown';
+    const chatType = msg.chat.type;
 
-    console.log(`📱 Message from ${username}: "${text}"`);
+    console.log(`📱 Message from ${username} in ${chatType}: "${text}"`);
+    console.log(`💬 Chat ID: ${chatId}, Thread ID: ${messageThreadId || 'None'}`);
 
     // Handle commands
     if (text.startsWith('/')) {
