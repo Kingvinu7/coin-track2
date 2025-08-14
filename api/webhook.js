@@ -75,22 +75,23 @@ async function getTop500() {
       }),
     ]);
 
-    const topMap = {};
-    const topById = {};
-    const coins = [...p1.data, ...p2.data];
+    const topMap = {};  
+    const topById = {};  
+    const coins = [...p1.data, ...p2.data];  
 
-    for (const c of coins) {
-      const sym = (c.symbol || "").toLowerCase();
-      if (!topMap[sym]) topMap[sym] = c.id;
-      topById[c.id] = c;
-    }
+    for (const c of coins) {  
+      const sym = (c.symbol || "").toLowerCase();  
+      if (!topMap[sym]) topMap[sym] = c.id;  
+      topById[c.id] = c;  
+    }  
 
-    // Override with priorities
-    for (const [sym, id] of Object.entries(priority)) {
-      topMap[sym] = id;
-    }
+    // Override with priorities  
+    for (const [sym, id] of Object.entries(priority)) {  
+      topMap[sym] = id;  
+    }  
 
     return { topMap, topById };
+
   } catch (e) {
     console.error("❌ Top500 failed:", e.message);
     return { topMap: priority, topById: {} }; // Fallback to priority list
@@ -106,25 +107,26 @@ async function fallbackBestBySymbol(symbol) {
       timeout: 15000,
     });
 
-    const candidates = sr.data.coins
-      .filter(x => (x.symbol || "").toLowerCase() === q)
-      .slice(0, 5);
+    const candidates = sr.data.coins  
+      .filter(x => (x.symbol || "").toLowerCase() === q)  
+      .slice(0, 5);  
 
-    const pick = candidates.length ? candidates : sr.data.coins.slice(0, 5);
-    if (!pick.length) return null;
+    const pick = candidates.length ? candidates : sr.data.coins.slice(0, 5);  
+    if (!pick.length) return null;  
 
-    const ids = pick.map(x => x.id).join(",");
-    const mr = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
-      params: {
-        vs_currency: "usd",
-        ids,
-        order: "market_cap_desc",
-        price_change_percentage: "24h",
-      },
-      timeout: 15000,
-    });
+    const ids = pick.map(x => x.id).join(",");  
+    const mr = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {  
+      params: {  
+        vs_currency: "usd",  
+        ids,  
+        order: "market_cap_desc",  
+        price_change_percentage: "24h",  
+      },  
+      timeout: 15000,  
+    });  
 
     return mr.data.length ? mr.data : null;
+
   } catch (e) {
     console.error("Fallback search failed:", e.message);
     return null;
@@ -143,16 +145,16 @@ async function getCoinBySymbol(symbol) {
   try {
     // Get top 500 fresh each time (serverless - no caching)
     const { topMap, topById } = await getTop500();
-    
-    const id = topMap[s];
-    if (id) {
-      const row = topById[id];
-      if (row) return row;
-      return await getCoinById(id);
-    }
 
-    // Fallback search
-    const fallbackResults = await fallbackBestBySymbol(s);
+    const id = topMap[s];  
+    if (id) {  
+      const row = topById[id];  
+      if (row) return row;  
+      return await getCoinById(id);  
+    }  
+
+    // Fallback search  
+    const fallbackResults = await fallbackBestBySymbol(s);  
     return fallbackResults && fallbackResults.length > 0 ? fallbackResults[0] : null;
 
   } catch (error) {
@@ -203,7 +205,7 @@ function buildReply(coin, amount) {
 
 // --- Send message with topic support and delete button ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
-  const sendOptions = { 
+  const sendOptions = {
     chat_id: chatId,
     text: text,
     parse_mode: 'Markdown', // Enable markdown for monospace formatting
@@ -217,13 +219,13 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
         ]
       ]
     },
-    ...options 
+    ...options
   };
-  
+
   if (messageThreadId) {
     sendOptions.message_thread_id = messageThreadId;
   }
-  
+
   try {
     const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, sendOptions, {
       timeout: 10000
@@ -249,8 +251,8 @@ export default async function handler(req, res) {
 
   // Handle GET request (for testing)
   if (req.method === 'GET') {
-    return res.status(200).json({ 
-      status: 'Webhook endpoint is working!', 
+    return res.status(200).json({
+      status: 'Webhook endpoint is working!',
       method: 'GET',
       timestamp: new Date().toISOString()
     });
@@ -270,116 +272,123 @@ export default async function handler(req, res) {
 
   try {
     const update = req.body;
+
+    console.log('📥 Received update:', JSON.stringify(update, null, 2));  
     
-    console.log('📥 Received update:', JSON.stringify(update, null, 2));
+    // Validate update  
+    if (!update || (!update.message && !update.callback_query)) {  
+      return res.status(200).json({ ok: true, message: 'No message or callback in update' });  
+    }  
+
+    // Handle callback queries (delete button presses)  
+    if (update.callback_query) {  
+      console.log('🔘 Handling callback query');  
+      const callbackQuery = update.callback_query;  
+      const chatId = callbackQuery.message.chat.id;  
+      const messageId = callbackQuery.message.message_id;  
+      
+      if (callbackQuery.data === 'delete_message') {  
+        try {  
+          // Delete the message  
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {  
+            chat_id: chatId,  
+            message_id: messageId  
+          });  
+          console.log('✅ Message deleted successfully');  
+          
+          // Answer the callback query to remove loading state  
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {  
+            callback_query_id: callbackQuery.id  
+          });  
+          
+        } catch (error) {  
+          console.error('❌ Error deleting message:', error.message);  
+          // Answer callback query even if delete fails  
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {  
+            callback_query_id: callbackQuery.id,  
+            text: "Cannot delete this message"  
+          });  
+        }  
+      }  
+      
+      return res.status(200).json({ ok: true });  
+    }  
+
+    const msg = update.message;  
+    if (!msg || !msg.text) {  
+      console.log('⚠️ No text in message');  
+      return res.status(200).json({ ok: true, message: 'No text in message' });  
+    }  
+
+    const chatId = msg.chat.id;  
+    const messageThreadId = msg.message_thread_id; // Get the thread ID if it exists
+    const text = msg.text.trim();  
+    const username = msg.from.username || msg.from.first_name || 'Unknown';  
+    const chatType = msg.chat.type;  
     
-    // Validate update
-    if (!update || (!update.message && !update.callback_query)) {
-      return res.status(200).json({ ok: true, message: 'No message or callback in update' });
+    // Ignore cryptocurrency addresses
+    const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
+    if (isAddress) {
+      console.log('⚠️ Ignoring potential address.');
+      return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
     }
 
-    // Handle callback queries (delete button presses)
-    if (update.callback_query) {
-      console.log('🔘 Handling callback query');
-      const callbackQuery = update.callback_query;
-      const chatId = callbackQuery.message.chat.id;
-      const messageId = callbackQuery.message.message_id;
-      
-      if (callbackQuery.data === 'delete_message') {
-        try {
-          // Delete the message
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
-            chat_id: chatId,
-            message_id: messageId
-          });
-          console.log('✅ Message deleted successfully');
-          
-          // Answer the callback query to remove loading state
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-            callback_query_id: callbackQuery.id
-          });
-          
-        } catch (error) {
-          console.error('❌ Error deleting message:', error.message);
-          // Answer callback query even if delete fails
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-            callback_query_id: callbackQuery.id,
-            text: "Cannot delete this message"
-          });
-        }
-      }
-      
-      return res.status(200).json({ ok: true });
-    }
+    console.log(`📱 Message from ${username} in ${chatType}: "${text}"`);  
+    console.log(`💬 Chat ID: ${chatId}, Topic ID: ${messageThreadId || 'None'}`);  
 
-    const msg = update.message;
-    if (!msg || !msg.text) {
-      console.log('⚠️ No text in message');
-      return res.status(200).json({ ok: true, message: 'No text in message' });
-    }
-
-    const chatId = msg.chat.id;
-    const messageThreadId = msg.message?.message_thread_id;
-    const text = msg.text.trim();
-    const username = msg.from.username || msg.from.first_name || 'Unknown';
-    const chatType = msg.chat.type;
-
-    console.log(`📱 Message from ${username} in ${chatType}: "${text}"`);
-    console.log(`💬 Chat ID: ${chatId}, Thread ID: ${messageThreadId || 'None'}`);
-
-    // Handle commands
-    if (text.startsWith('/')) {
-      const command = text.substring(1).toLowerCase().split('@')[0];
+    // Handle commands  
+    if (text.startsWith('/')) {  
+      const command = text.substring(1).toLowerCase().split('@')[0];  
       
-      if (command === 'start') {
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-          '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');
-      }
-      else if (command === 'help') {
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
-      }
-      else if (command === 'test') {
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          `\`\`\`\nBot Status: Working on Vercel\nChat Type: ${msg.chat.type}\nTopic ID: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\n\`\`\``);
-      }
-      else {
-        // Handle /symbol commands
-        const coin = await getCoinBySymbol(command);
-        if (coin) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));
-        } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);
-        }
-      }
-    } else {
-      // Handle "2 eth" or "eth 2" format
-      const re = /^(\d*\.?\d+)\s*([a-zA-Z0-9]+)$|^([a-zA-Z0-9]+)\s*(\d*\.?\d+)$/;
-      const m = text.toLowerCase().match(re);
+      if (command === 'start') {  
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,   
+          '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');  
+      }  
+      else if (command === 'help') {  
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,  
+          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');  
+      }  
+      else if (command === 'test') {  
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,  
+          `\`\`\`\nBot Status: Working on Vercel\nChat Type: ${msg.chat.type}\nTopic ID: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\n\`\`\``);  
+      }  
+      else {  
+        // Handle /symbol commands  
+        const coin = await getCoinBySymbol(command);  
+        if (coin) {  
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));  
+        } else {  
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);  
+        }  
+      }  
+    } else {  
+      // Handle "2 eth" or "eth 2" format  
+      const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;  
+      const m = text.toLowerCase().match(re);  
       
-      if (m) {
-        let amount, symbol;
-        if (m[1] && m[2]) {
-          amount = parseFloat(m[1]);
-          symbol = m[2];
-        } else if (m[3] && m[4]) {
-          symbol = m[3];
-          amount = parseFloat(m[4]);
-        }
+      if (m) {  
+        let amount, symbol;  
+        if (m[1] && m[2]) {  
+          amount = parseFloat(m[1]);  
+          symbol = m[2];  
+        } else if (m[3] && m[4]) {  
+          symbol = m[3];  
+          amount = parseFloat(m[4]);  
+        }  
         
-        if (amount && symbol) {
-          const coin = await getCoinBySymbol(symbol);
-          if (coin) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));
-          } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
-          }
-        }
-      }
-    }
+        if (amount && symbol) {  
+          const coin = await getCoinBySymbol(symbol);  
+          if (coin) {  
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));  
+          } else {  
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);  
+          }  
+        }  
+      }  
+    }  
 
     return res.status(200).json({ ok: true });
-    
+
   } catch (error) {
     console.error('❌ Webhook error:', error.message);
     console.error('Stack:', error.stack);
