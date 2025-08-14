@@ -319,7 +319,7 @@ export default async function handler(req, res) {
     }
 
     const chatId = msg.chat.id;
-    const messageThreadId = msg.message.message_thread_id;
+    const messageThreadId = msg.message?.message_thread_id;
     const text = msg.text.trim();
     const username = msg.from.username || msg.from.first_name || 'Unknown';
     const chatType = msg.chat.type;
