@@ -279,7 +279,7 @@ export default async function handler(req, res) {
       
       if (command === 'start') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-          '👋 Welcome to the Crypto Price Bot!\n\nType /help to see how to use me.\n\n🚀 Running 24/7 on Vercel!');
+          '👋 Welcome to the Crypto Price Bot!\n\nType /help to see how to use me.\n\n🚀 Running 24/7');
       }
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
