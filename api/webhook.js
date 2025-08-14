@@ -123,7 +123,7 @@ async function fallbackBestBySymbol(symbol) {
       timeout: 15000,
     });
 
-    return mr.data.length ? mr.data[0] : null;
+    return mr.data.length ? mr.data : null;
   } catch (e) {
     console.error("Fallback search failed:", e.message);
     return null;
@@ -170,7 +170,7 @@ async function getCoinById(id) {
       },
       timeout: 15000,
     });
-    return r.data.length ? r.data[0] : null;
+    return r.data.length ? r.data : null;
   } catch (e) {
     console.error("getCoinById failed:", e.message);
     return null;
@@ -266,7 +266,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔧 FIX: Extract update from request body
+    // FIX: Extract update from request body - THIS WAS THE MAIN ERROR
     const update = req.body;
     
     console.log('📥 Received update:', JSON.stringify(update, null, 2));
