@@ -182,6 +182,62 @@ async function getCoinById(id) {
   }
 }
 
+// --- Get Ethereum Gas Price ---
+async function getEthGasPrice() {
+  try {
+    const response = await axios.get("https://api.etherscan.io/api", {
+      params: {
+        module: "gastracker",
+        action: "gasoracle",
+        apikey: process.env.ETHERSCAN_API_KEY, // You will need to set this environment variable
+      },
+      timeout: 15000,
+    });
+
+    if (response.data.status === "1") {
+      const result = response.data.result;
+      return {
+        low: result.SafeGasPrice,
+        average: result.ProposeGasPrice,
+        high: result.FastGasPrice,
+      };
+    } else {
+      console.error("❌ Etherscan API error:", response.data.result);
+      return null;
+    }
+  } catch (e) {
+    console.error("❌ Etherscan API failed:", e.message);
+    return null;
+  }
+}
+
+// --- Evaluate a mathematical expression safely ---
+function evaluateExpression(expression) {
+  try {
+    // Basic regex to ensure it only contains numbers, +, -, *, /, and parentheses
+    const sanitizedExpression = expression.replace(/[^0-9+\-*/(). ]/g, '');
+    
+    // Check for empty or invalid expressions
+    if (!sanitizedExpression || /^[+\-*/.]/.test(sanitizedExpression) || /[+\-*/.]$/.test(sanitizedExpression)) {
+      return null;
+    }
+
+    // Use a sandboxed Function constructor to evaluate
+    const result = new Function(`return ${sanitizedExpression}`)();
+    
+    // Check if the result is a valid number
+    if (typeof result === 'number' && isFinite(result)) {
+      return result;
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('❌ Calculator evaluation failed:', e.message);
+    return null;
+  }
+}
+
+
 // --- Build reply with monospace formatting ---
 function buildReply(coin, amount) {
   const price = coin.current_price ?? 0;
@@ -199,8 +255,37 @@ function buildReply(coin, amount) {
   lines.push(`FDV: ${fmtBig(fdv)}`);
   lines.push(`ATH: ${fmtPrice(ath)}`);
 
-  // Using monospace formatting with ```
   return `\`\`\`\n${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\n\`\`\``;
+}
+
+// --- Build gas price reply
+function buildGasReply(gasPrices, ethPrice) {
+  if (!gasPrices) {
+    return '`Could not retrieve gas prices. Please try again later.`';
+  }
+
+  // A standard ETH transfer costs 21,000 gas units
+  const gasLimit = 21000;
+
+  const calculateCost = (gwei, ethPrice) => {
+    const ethCost = (gwei * gasLimit) / 10**9;
+    return ethCost * ethPrice;
+  };
+
+  const slowCost = calculateCost(gasPrices.low, ethPrice);
+  const averageCost = calculateCost(gasPrices.average, ethPrice);
+  const highCost = calculateCost(gasPrices.high, ethPrice);
+
+  const lines = [];
+  lines.push('Current Ethereum Gas Prices');
+  lines.push('-----------------------------');
+  lines.push(`Slow:    ${gasPrices.low} Gwei (~${fmtPrice(slowCost)})`);
+  lines.push(`Average: ${gasPrices.average} Gwei (~${fmtPrice(averageCost)})`);
+  lines.push(`Fast:    ${gasPrices.high} Gwei (~${fmtPrice(highCost)})`);
+  lines.push('-----------------------------');
+  lines.push(`ETH Price: ${fmtPrice(ethPrice)}`);
+
+  return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
 }
 
 // --- Send message with topic support and delete button ---
@@ -208,7 +293,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
   const sendOptions = {
     chat_id: chatId,
     text: text,
-    parse_mode: 'Markdown', // Enable markdown for monospace formatting
+    parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
         [
@@ -263,7 +348,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  // Get bot token
   const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!BOT_TOKEN) {
     console.error('❌ TELEGRAM_BOT_TOKEN not set');
@@ -272,119 +356,122 @@ export default async function handler(req, res) {
 
   try {
     const update = req.body;
+    if (!update || (!update.message && !update.callback_query)) {
+      return res.status(200).json({ ok: true, message: 'No message or callback in update' });
+    }
 
-    console.log('📥 Received update:', JSON.stringify(update, null, 2));  
-    
-    // Validate update  
-    if (!update || (!update.message && !update.callback_query)) {  
-      return res.status(200).json({ ok: true, message: 'No message or callback in update' });  
-    }  
-
-    // Handle callback queries (delete button presses)  
-    if (update.callback_query) {  
-      console.log('🔘 Handling callback query');  
-      const callbackQuery = update.callback_query;  
-      const chatId = callbackQuery.message.chat.id;  
-      const messageId = callbackQuery.message.message_id;  
+    if (update.callback_query) {
+      const callbackQuery = update.callback_query;
+      const chatId = callbackQuery.message.chat.id;
+      const messageId = callbackQuery.message.message_id;
       
-      if (callbackQuery.data === 'delete_message') {  
-        try {  
-          // Delete the message  
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {  
-            chat_id: chatId,  
-            message_id: messageId  
-          });  
-          console.log('✅ Message deleted successfully');  
-          
-          // Answer the callback query to remove loading state  
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {  
-            callback_query_id: callbackQuery.id  
-          });  
-          
-        } catch (error) {  
-          console.error('❌ Error deleting message:', error.message);  
-          // Answer callback query even if delete fails  
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {  
-            callback_query_id: callbackQuery.id,  
-            text: "Cannot delete this message"  
-          });  
-        }  
-      }  
-      
-      return res.status(200).json({ ok: true });  
-    }  
+      if (callbackQuery.data === 'delete_message') {
+        try {
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+            chat_id: chatId,
+            message_id: messageId
+          });
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            callback_query_id: callbackQuery.id
+          });
+        } catch (error) {
+          console.error('❌ Error deleting message:', error.message);
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            callback_query_id: callbackQuery.id,
+            text: "Cannot delete this message"
+          });
+        }
+      }
+      return res.status(200).json({ ok: true });
+    }
 
-    const msg = update.message;  
-    if (!msg || !msg.text) {  
-      console.log('⚠️ No text in message');  
-      return res.status(200).json({ ok: true, message: 'No text in message' });  
-    }  
+    const msg = update.message;
+    if (!msg || !msg.text) {
+      return res.status(200).json({ ok: true, message: 'No text in message' });
+    }
 
-    const chatId = msg.chat.id;  
-    const messageThreadId = msg.message_thread_id; // Get the thread ID if it exists
-    const text = msg.text.trim();  
-    const username = msg.from.username || msg.from.first_name || 'Unknown';  
-    const chatType = msg.chat.type;  
+    const chatId = msg.chat.id;
+    const messageThreadId = msg.message_thread_id;
+    const text = msg.text.trim();
+    const username = msg.from.username || msg.from.first_name || 'Unknown';
+    const chatType = msg.chat.type;
     
-    // Ignore cryptocurrency addresses
     const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
     if (isAddress) {
-      console.log('⚠️ Ignoring potential address.');
       return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
     }
 
-    console.log(`📱 Message from ${username} in ${chatType}: "${text}"`);  
-    console.log(`💬 Chat ID: ${chatId}, Topic ID: ${messageThreadId || 'None'}`);  
-
-    // Handle commands  
-    if (text.startsWith('/')) {  
-      const command = text.substring(1).toLowerCase().split('@')[0];  
+    if (text.startsWith('/')) {
+      const command = text.substring(1).toLowerCase().split('@')[0];
       
-      if (command === 'start') {  
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,   
-          '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');  
-      }  
-      else if (command === 'help') {  
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,  
-          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');  
-      }  
-      else if (command === 'test') {  
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,  
-          `\`\`\`\nBot Status: Working on Vercel\nChat Type: ${msg.chat.type}\nTopic ID: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\n\`\`\``);  
-      }  
-      else {  
-        // Handle /symbol commands  
-        const coin = await getCoinBySymbol(command);  
-        if (coin) {  
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));  
-        } else {  
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);  
-        }  
-      }  
-    } else {  
-      // Handle "2 eth" or "eth 2" format  
-      const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;  
-      const m = text.toLowerCase().match(re);  
-      
-      if (m) {  
-        let amount, symbol;  
-        if (m[1] && m[2]) {  
-          amount = parseFloat(m[1]);  
-          symbol = m[2];  
-        } else if (m[3] && m[4]) {  
-          symbol = m[3];  
-          amount = parseFloat(m[4]);  
-        }  
+      if (command === 'gas') {
+        const ethCoin = await getCoinBySymbol('eth');
+        const ethPrice = ethCoin ? ethCoin.current_price : null;
+        const gasPrices = await getEthGasPrice();
         
-        if (amount && symbol) {  
-          const coin = await getCoinBySymbol(symbol);  
-          if (coin) {  
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));  
-          } else {  
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);  
-          }  
-        }  
+        if (ethPrice && gasPrices) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice));
+        } else {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve ETH gas or price data. Please try again.`');
+        }
+      }
+      else if (command === 'start') {
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,   
+          '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');
       }  
+      else if (command === 'help') {
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+          '```\nUsage:\n\n/eth → ETH price\n/gas → ETH gas price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\n3+5 → 8\n100/5 → 20\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
+      }  
+      else if (command === 'test') {
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+          `\`\`\`\nBot Status: Working on Vercel\nChat Type: ${msg.chat.type}\nTopic ID: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\n\`\`\``);
+      }  
+      else {
+        const coin = await getCoinBySymbol(command);
+        if (coin) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));
+        } else {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);
+        }
+      }  
+    } else {
+      // Regular expression to match a simple mathematical expression
+      const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
+      
+      if (mathRegex.test(text)) {
+        const result = evaluateExpression(text);
+        if (result !== null) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Result: ${result}\``);
+        } else {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid mathematical expression.`');
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      // Handle "2 eth" or "eth 2" format
+      const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
+      const m = text.toLowerCase().match(re);
+      
+      if (m) {
+        let amount, symbol;
+        if (m[1] && m[2]) {
+          amount = parseFloat(m[1]);
+          symbol = m[2];
+        } else if (m[3] && m[4]) {
+          symbol = m[3];
+          amount = parseFloat(m[4]);
+        }
+        
+        if (amount && symbol) {
+          const coin = await getCoinBySymbol(symbol);
+          if (coin) {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));
+          } else {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
+          }
+        }
+      }
     }  
 
     return res.status(200).json({ ok: true });
