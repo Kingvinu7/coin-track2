@@ -151,7 +151,9 @@ async function getCoinBySymbol(symbol) {
     }
 
     // Fallback search
-    return await fallbackBestBySymbol(s);
+    const fallbackResults = await fallbackBestBySymbol(s);
+    return fallbackResults && fallbackResults.length > 0 ? fallbackResults[0] : null;
+
   } catch (error) {
     console.error(`Error getting coin ${s}:`, error.message);
     return null;
@@ -170,7 +172,7 @@ async function getCoinById(id) {
       },
       timeout: 15000,
     });
-    return r.data.length ? r.data : null;
+    return r.data.length ? r.data[0] : null; // Also corrected to return a single object
   } catch (e) {
     console.error("getCoinById failed:", e.message);
     return null;
@@ -190,8 +192,8 @@ function buildReply(coin, amount) {
     lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(total)}`);
   }
   lines.push(`Price: ${fmtPrice(price)}`);
-  lines.push(`MC: $${fmtBig(mc)}`);
-  lines.push(`FDV: $${fmtBig(fdv)}`);
+  lines.push(`MC: ${fmtBig(mc)}`);
+  lines.push(`FDV: ${fmtBig(fdv)}`);
   lines.push(`ATH: ${fmtPrice(ath)}`);
 
   // Using monospace formatting with ```
@@ -317,7 +319,7 @@ export default async function handler(req, res) {
     }
 
     const chatId = msg.chat.id;
-    const messageThreadId = msg.message_thread_id;
+    const messageThreadId = msg.message.message_thread_id;
     const text = msg.text.trim();
     const username = msg.from.username || msg.from.first_name || 'Unknown';
     const chatType = msg.chat.type;
@@ -327,15 +329,16 @@ export default async function handler(req, res) {
 
     // Handle commands
     if (text.startsWith('/')) {
-      const command = text.substring(1).toLowerCase().split('@'); // Remove @botname if present
+      const command = text.substring(1).toLowerCase().split('@')[0]; // FIX: Get the first element of the split array
       
       if (command === 'start') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
           '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');
       }
       else if (command === 'help') {
+        // FIX: Added the missing closing single quote
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```
+          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
       }
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
@@ -357,12 +360,12 @@ export default async function handler(req, res) {
       
       if (m) {
         let amount, symbol;
-        if (m && m) {
-          amount = parseFloat(m);
-          symbol = m;
-        } else if (m && m) {
-          symbol = m;
-          amount = parseFloat(m);
+        if (m[1] && m[2]) { // FIX: Use correct group indices
+          amount = parseFloat(m[1]);
+          symbol = m[2];
+        } else if (m[3] && m[4]) { // FIX: Use correct group indices
+          symbol = m[3];
+          amount = parseFloat(m[4]);
         }
         
         if (amount && symbol) {
