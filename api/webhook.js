@@ -1,4 +1,4 @@
-// api/webhook.js - Enhanced version with all requested features
+// api/webhook.js - Fixed and robust version for Vercel
 import axios from 'axios';
 
 // --- Helpers ---
@@ -13,17 +13,6 @@ function fmtBig(n) {
 function fmtPrice(n) {
   if (n == null) return "$0";
   return "$" + n.toLocaleString(undefined, { maximumFractionDigits: 8 });
-}
-
-function fmtPercentage(n) {
-  if (n == null) return "N/A";
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(2)}%`;
-}
-
-// Escape special characters for MarkdownV2
-function escapeMarkdownV2(text) {
-  return text.replace(/[_*\[\]()~`>#+=|{}.!-]/g, '\\$&');
 }
 
 // Strong guarantees for common tickers
@@ -188,79 +177,25 @@ async function getCoinById(id) {
   }
 }
 
-// --- Build reply (now without emojis and with 24h change) ---
+// --- Build reply with monospace formatting ---
 function buildReply(coin, amount) {
   const price = coin.current_price ?? 0;
   const total = price * (amount ?? 1);
   const mc = coin.market_cap ?? null;
   const fdv = coin.fully_diluted_valuation ?? null;
   const ath = coin.ath ?? null;
-  const change24h = coin.price_change_percentage_24h ?? null;
 
   const lines = [];
-  
-  // Add amount calculation if not 1
   if (amount != null && amount !== 1) {
     lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(total)}`);
-    lines.push(''); // Empty line for spacing
   }
-  
   lines.push(`Price: ${fmtPrice(price)}`);
-  lines.push(`24h Change: ${fmtPercentage(change24h)}`);
   lines.push(`MC: $${fmtBig(mc)}`);
   lines.push(`FDV: $${fmtBig(fdv)}`);
   lines.push(`ATH: ${fmtPrice(ath)}`);
 
-  // Create monospace formatted message
-  const content = `${coin.name} (${coin.symbol.toUpperCase()})\n\n${lines.join('\n')}`;
-  return `\`\`\`\n${content}\n\`\`\``;
-}
-
-// --- Create delete button keyboard ---
-function getDeleteKeyboard() {
-  return {
-    inline_keyboard: [[
-      {
-        text: "🗑️ Delete",
-        callback_data: "delete_message"
-      }
-    ]]
-  };
-}
-
-// --- Handle callback queries (delete button) ---
-async function handleCallbackQuery(botToken, callbackQuery) {
-  try {
-    const { id, message, data } = callbackQuery;
-    
-    if (data === "delete_message" && message) {
-      // Delete the message
-      await axios.post(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
-        chat_id: message.chat.id,
-        message_id: message.message_id
-      });
-      
-      // Answer the callback query to remove loading state
-      await axios.post(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-        callback_query_id: id,
-        text: "Message deleted",
-        show_alert: false
-      });
-    }
-  } catch (error) {
-    console.error('Error handling callback query:', error.message);
-    
-    // Still answer the callback query to prevent timeout
-    try {
-      await axios.post(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-        callback_query_id: callbackQuery.id,
-        text: "Error deleting message",
-        show_alert: false
-      });
-    } catch (e) {
-      console.error('Error answering callback query:', e.message);
-    }
-  }
+  // Using monospace formatting with ``` for code blocks
+  return `\`\`\`\n${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\n\`\`\``;
 }
 
 // --- Send message with topic support and delete button ---
@@ -268,8 +203,17 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
   const sendOptions = { 
     chat_id: chatId,
     text: text,
-    parse_mode: 'MarkdownV2',
-    reply_markup: getDeleteKeyboard(),
+    parse_mode: 'Markdown', // Enable markdown for monospace formatting
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "Delete",
+            callback_data: "delete_message"
+          }
+        ]
+      ]
+    },
     ...options 
   };
   
@@ -324,15 +268,41 @@ export default async function handler(req, res) {
   try {
     const update = req.body;
     
-    // Handle callback queries (delete button clicks)
-    if (update.callback_query) {
-      await handleCallbackQuery(BOT_TOKEN, update.callback_query);
-      return res.status(200).json({ ok: true });
-    }
-    
     // Validate update
-    if (!update || !update.message) {
-      return res.status(200).json({ ok: true, message: 'No message in update' });
+    if (!update || (!update.message && !update.callback_query)) {
+      return res.status(200).json({ ok: true, message: 'No message or callback in update' });
+    }
+
+    // Handle callback queries (delete button presses)
+    if (update.callback_query) {
+      const callbackQuery = update.callback_query;
+      const chatId = callbackQuery.message.chat.id;
+      const messageId = callbackQuery.message.message_id;
+      
+      if (callbackQuery.data === 'delete_message') {
+        try {
+          // Delete the message
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+            chat_id: chatId,
+            message_id: messageId
+          });
+          
+          // Answer the callback query to remove loading state
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            callback_query_id: callbackQuery.id
+          });
+          
+        } catch (error) {
+          console.error('Error deleting message:', error.message);
+          // Answer callback query even if delete fails
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            callback_query_id: callbackQuery.id,
+            text: "Cannot delete this message"
+          });
+        }
+      }
+      
+      return res.status(200).json({ ok: true });
     }
 
     const msg = update.message;
@@ -352,31 +322,16 @@ export default async function handler(req, res) {
       const command = text.substring(1).toLowerCase().split('@')[0]; // Remove @botname if present
       
       if (command === 'start') {
-        const welcomeText = escapeMarkdownV2('👋 Welcome to the Crypto Price Bot!\n\nType /help to see how to use me.\n\n🚀 Running 24/7');
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`\`\`\n${welcomeText}\n\`\`\``);
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+          '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');
       }
       else if (command === 'help') {
-        const helpText = `Usage:
-
-• /eth → ETH price
-• 2 eth → value of 2 ETH  
-• eth 0.5 → value of 0.5 ETH
-• Works for top 500 coins by market cap
-
-Reply includes:
-Price
-24h Change %
-MC (Market Cap)
-FDV (Fully Diluted Valuation)
-ATH (All Time High)`;
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`\`\`\n${helpText}\n\`\`\``);
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+          '```\nUsage:\n\n/eth → ETH price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
       }
       else if (command === 'test') {
-        const testText = `Bot is working on Vercel!
-Chat Type: ${msg.chat.type}
-Topic ID: ${messageThreadId || "None"}
-Time: ${new Date().toISOString()}`;
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`\`\`\n${testText}\n\`\`\``);
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+          `\`\`\`\nBot Status: Working on Vercel\nChat Type: ${msg.chat.type}\nTopic ID: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\n\`\`\``);
       }
       else {
         // Handle /symbol commands
@@ -384,8 +339,7 @@ Time: ${new Date().toISOString()}`;
         if (coin) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));
         } else {
-          const errorText = escapeMarkdownV2(`❌ Coin "${command.toUpperCase()}" not found.`);
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`\`\`\n${errorText}\n\`\`\``);
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);
         }
       }
     } else {
@@ -408,8 +362,7 @@ Time: ${new Date().toISOString()}`;
           if (coin) {
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));
           } else {
-            const errorText = escapeMarkdownV2(`❌ Coin "${symbol.toUpperCase()}" not found.`);
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`\`\`\n${errorText}\n\`\`\``);
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
           }
         }
       }
