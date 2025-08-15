@@ -1,4 +1,4 @@
-// api/webhook.js - Fixed Version for Telegram API Issues
+// api/webhook.js - Final Fixed Version for Telegram Topic/Thread Issues
 
 import axios from 'axios';
 
@@ -94,7 +94,7 @@ async function getTop500() {
 
   } catch (e) {
     console.error("❌ Top500 failed:", e.message);
-    return { topMap: priority, topById: {} }; // Fallback to priority list
+    return { topMap: priority, topById: {} };
   }
 }
 
@@ -137,15 +137,12 @@ async function fallbackBestBySymbol(symbol) {
 async function getCoinBySymbol(symbol) {
   const s = symbol.toLowerCase();
 
-  // Priority override first
   if (priority[s]) {
     return await getCoinById(priority[s]);
   }
 
   try {
-    // Get top 500 fresh each time (serverless - no caching)
     const { topMap, topById } = await getTop500();
-
     const id = topMap[s];  
     if (id) {  
       const row = topById[id];  
@@ -153,7 +150,6 @@ async function getCoinBySymbol(symbol) {
       return await getCoinById(id);  
     }  
 
-    // Fallback search  
     const fallbackResults = await fallbackBestBySymbol(s);  
     return fallbackResults && fallbackResults.length > 0 ? fallbackResults[0] : null;
 
@@ -188,7 +184,7 @@ async function getHistoricalData(coinId) {
         const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
             params: {
                 vs_currency: "usd",
-                days: 30, // Default to 30 days of data
+                days: 30,
             },
             timeout: 15000,
         });
@@ -206,7 +202,7 @@ async function getEthGasPrice() {
       params: {
         module: "gastracker",
         action: "gasoracle",
-        apikey: process.env.ETHERSCAN_API_KEY, // You will need to set this environment variable
+        apikey: process.env.ETHERSCAN_API_KEY,
       },
       timeout: 15000,
     });
@@ -231,22 +227,14 @@ async function getEthGasPrice() {
 // --- Evaluate a mathematical expression safely ---
 function evaluateExpression(expression) {
   try {
-    // Basic regex to ensure it only contains numbers, +, -, *, /, and parentheses
     const sanitizedExpression = expression.replace(/[^0-9+\-*/(). ]/g, '');
-    
-    // Check for empty or invalid expressions
     if (!sanitizedExpression || /^[+\-*/.]/.test(sanitizedExpression) || /[+\-*/.]$/.test(sanitizedExpression)) {
       return null;
     }
-
-    // Use a sandboxed Function constructor to evaluate
     const result = new Function(`return ${sanitizedExpression}`)();
-    
-    // Check if the result is a valid number
     if (typeof result === 'number' && isFinite(result)) {
       return result;
     }
-    
     return null;
   } catch (e) {
     console.error('❌ Calculator evaluation failed:', e.message);
@@ -254,10 +242,9 @@ function evaluateExpression(expression) {
   }
 }
 
-// --- Generate QuickChart URL (FIXED) ---
+// --- Generate QuickChart URL ---
 function getChartImageUrl(coinName, historicalData) {
   try {
-    // Limit data points to prevent URL length issues
     const maxPoints = 30;
     const step = Math.max(1, Math.floor(historicalData.length / maxPoints));
     const sampledData = historicalData.filter((_, index) => index % step === 0);
@@ -309,13 +296,11 @@ function getChartImageUrl(coinName, historicalData) {
       }
     };
 
-    // Create a more compact chart config
     const compactConfig = encodeURIComponent(JSON.stringify(chartConfig));
     return `https://quickchart.io/chart?c=${compactConfig}&w=400&h=250&backgroundColor=white`;
     
   } catch (error) {
     console.error('❌ Chart URL generation failed:', error.message);
-    // Return a simple fallback chart
     return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
       type: 'line',
       data: { labels: ['Error'], datasets: [{ data: [0] }] }
@@ -323,7 +308,7 @@ function getChartImageUrl(coinName, historicalData) {
   }
 }
 
-// --- Build reply with monospace formatting (FIXED) ---
+// --- Build reply with monospace formatting ---
 function buildReply(coin, amount) {
   try {
     const price = coin.current_price ?? 0;
@@ -341,7 +326,6 @@ function buildReply(coin, amount) {
     lines.push(`FDV: ${fmtBig(fdv)}`);
     lines.push(`ATH: ${fmtPrice(ath)}`);
 
-    // Use simple backticks instead of triple backticks to avoid formatting issues
     return `\`${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\``;
   } catch (error) {
     console.error('❌ buildReply error:', error.message);
@@ -349,20 +333,15 @@ function buildReply(coin, amount) {
   }
 }
 
-// --- Build gas price reply (FIXED) ---
+// --- Build gas price reply ---
 function buildGasReply(gasPrices, ethPrice) {
   try {
     if (!gasPrices) {
       return '`Could not retrieve gas prices. Please try again later.`';
     }
 
-    // A standard ETH transfer costs 21,000 gas units
     const gasLimit = 21000;
-
-    const calculateCost = (gwei, ethPrice) => {
-      const ethCost = (gwei * gasLimit) / 10**9;
-      return ethCost * ethPrice;
-    };
+    const calculateCost = (gwei, ethPrice) => (gwei * gasLimit) / 10**9 * ethPrice;
 
     const slowCost = calculateCost(gasPrices.low, ethPrice);
     const averageCost = calculateCost(gasPrices.average, ethPrice);
@@ -376,7 +355,6 @@ function buildGasReply(gasPrices, ethPrice) {
     lines.push(`Fast: ${gasPrices.high} Gwei (~${fmtPrice(highCost)})`);
     lines.push(`ETH: ${fmtPrice(ethPrice)}`);
 
-    // Use simple backticks instead of triple backticks
     return `\`${lines.join('\n')}\``;
   } catch (error) {
     console.error('❌ buildGasReply error:', error.message);
@@ -387,12 +365,14 @@ function buildGasReply(gasPrices, ethPrice) {
 // --- Send message with topic support and delete button (FIXED) ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
   try {
-    // Sanitize the message text
-    const sanitizedText = text.replace(/[^\x00-\x7F]/g, ""); // Remove non-ASCII characters
+    if (!text || text.trim() === '') {
+      console.error('❌ Refusing to send an empty message.');
+      return;
+    }
     
     const sendOptions = {
-      chat_id: parseInt(chatId), // Ensure chatId is a number
-      text: sanitizedText,
+      chat_id: parseInt(chatId),
+      text: text,
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -407,8 +387,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
       ...options
     };
 
-    // Only add message_thread_id if it exists and is valid
-    if (messageThreadId && messageThreadId > 0) {
+    if (messageThreadId && parseInt(messageThreadId) > 0) {
       sendOptions.message_thread_id = parseInt(messageThreadId);
     }
 
@@ -429,14 +408,13 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
       console.error('Response status:', error.response.status);
     }
     
-    // Try sending without parse_mode as fallback
     try {
       const fallbackOptions = {
         chat_id: parseInt(chatId),
-        text: text.replace(/[`*_]/g, ''), // Remove markdown characters
+        text: text.replace(/[`*_]/g, ''),
       };
       
-      if (messageThreadId && messageThreadId > 0) {
+      if (messageThreadId && parseInt(messageThreadId) > 0) {
         fallbackOptions.message_thread_id = parseInt(messageThreadId);
       }
       
@@ -475,8 +453,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
       }
     };
 
-    // Only add message_thread_id if it exists and is valid
-    if (messageThreadId && messageThreadId > 0) {
+    if (messageThreadId && parseInt(messageThreadId) > 0) {
       sendOptions.message_thread_id = parseInt(messageThreadId);
     }
 
@@ -505,13 +482,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-
-  // Handle GET request (for testing)
   if (req.method === 'GET') {
     return res.status(200).json({
       status: 'Webhook endpoint is working!',
@@ -519,8 +492,6 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString()
     });
   }
-
-  // Only accept POST requests for webhook
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
@@ -537,7 +508,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, message: 'No message or callback in update' });
     }
 
-    // Handle callback queries (delete button)
     if (update.callback_query) {
       const callbackQuery = update.callback_query;
       const chatId = callbackQuery.message.chat.id;
@@ -574,9 +544,8 @@ export default async function handler(req, res) {
     const username = msg.from.username || msg.from.first_name || 'Unknown';
     const chatType = msg.chat.type;
     
-    console.log(`📨 Message from ${username} in ${chatType}: "${text}"`);
+    console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
     
-    // Ignore potential crypto addresses
     const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
     if (isAddress) {
       return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
@@ -585,8 +554,8 @@ export default async function handler(req, res) {
     if (text.startsWith('/')) {
       const parts = text.substring(1).toLowerCase().split(' ');
       const command = parts[0].split('@')[0];
-      const symbol = parts[1]; // Get symbol from command, e.g. /chart eth
-
+      const symbol = parts[1];
+      
       if (command === 'chart' && symbol) {
         console.log(`📊 Chart request for: ${symbol}`);
         const coin = await getCoinBySymbol(symbol);
@@ -594,7 +563,6 @@ export default async function handler(req, res) {
           const historicalData = await getHistoricalData(coin.id);
           if (historicalData && historicalData.length > 0) {
             const chartImageUrl = getChartImageUrl(coin.name, historicalData);
-            console.log(`📊 Sending chart: ${chartImageUrl}`);
             await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coin.name}* Price Chart (30 Days)`);
           } else {
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coin.name}\``);
@@ -607,7 +575,6 @@ export default async function handler(req, res) {
         const ethCoin = await getCoinBySymbol('eth');
         const ethPrice = ethCoin ? ethCoin.current_price : null;
         const gasPrices = await getEthGasPrice();
-        
         if (ethPrice && gasPrices) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice));
         } else {
@@ -635,9 +602,7 @@ export default async function handler(req, res) {
         }
       }  
     } else {
-      // Handle math expressions
       const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
-      
       if (mathRegex.test(text)) {
         const result = evaluateExpression(text);
         if (result !== null) {
@@ -648,10 +613,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // Handle "2 eth" or "eth 2" format
       const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
       const m = text.toLowerCase().match(re);
-      
       if (m) {
         let amount, symbol;
         if (m[1] && m[2]) {
@@ -661,7 +624,6 @@ export default async function handler(req, res) {
           symbol = m[3];
           amount = parseFloat(m[4]);
         }
-        
         if (amount && symbol) {
           const coin = await getCoinBySymbol(symbol);
           if (coin) {
@@ -672,9 +634,7 @@ export default async function handler(req, res) {
         }
       }
     }  
-
     return res.status(200).json({ ok: true });
-
   } catch (error) {
     console.error('❌ Webhook error:', error.message);
     console.error('Stack:', error.stack);
