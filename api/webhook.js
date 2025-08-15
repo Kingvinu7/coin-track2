@@ -77,7 +77,7 @@ async function getCoinDataWithChanges(symbol) {
 
     const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
       params: {
-        vs_currency: "usd,inr",
+        vs_currency: "usd",
         ids: coinId,
         price_change_percentage: "1h,24h,7d,30d",
         sparkline: "true"
@@ -230,19 +230,19 @@ function getChartImageUrl(coinName, historicalData) {
 // --- Build price reply with monospace formatting (UPDATED for INR) ---
 function buildReply(coin, amount) {
   try {
-    const priceUSD = coin.current_price?.usd ?? 0;
-    const priceINR = coin.current_price?.inr ?? 0;
+    const priceUSD = coin.current_price ?? 0;
+    const priceINR = coin.current_price * coin.price_inr_conversion_rate ?? 0; // The INR conversion rate is included in the response
     const totalUSD = priceUSD * (amount ?? 1);
     const formattedPriceINR = priceINR === 0 ? "N/A" : `₹` + priceINR.toLocaleString('en-IN', { maximumFractionDigits: 2 });
     
-    // Values are correctly accessed from their respective locations
-    const mc = coin.market_cap?.usd ?? null;
-    const ath = coin.ath?.usd ?? null;
-    const fdv = (coin.fully_diluted_valuation?.usd === 0 || coin.fully_diluted_valuation?.usd == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation?.usd);
-    const price_change_1h = coin.price_change_percentage_1h_in_currency?.usd;
-    const price_change_24h = coin.price_change_percentage_24h_in_currency?.usd;
-    const price_change_7d = coin.price_change_percentage_7d_in_currency?.usd;
-    const price_change_30d = coin.price_change_percentage_30d_in_currency?.usd;
+    // Updated to access top-level properties
+    const mc = coin.market_cap ?? null;
+    const ath = coin.ath ?? null;
+    const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
+    const price_change_1h = coin.price_change_percentage_1h_in_currency ?? null;
+    const price_change_24h = coin.price_change_percentage_24h_in_currency ?? null;
+    const price_change_7d = coin.price_change_percentage_7d_in_currency ?? null;
+    const price_change_30d = coin.price_change_percentage_30d_in_currency ?? null;
 
     const lines = [];
     if (amount != null && amount !== 1) {
