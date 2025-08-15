@@ -692,8 +692,25 @@ export default async function handler(req, res) {
     } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
     const lowerText = text.toLowerCase();
     
-    // Enhanced greeting detection
-    if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey') || 
+    // Check for insults first (takes priority over greetings)
+    if (lowerText.includes('idiot') || lowerText.includes('stupid') || lowerText.includes('dumb') ||
+        lowerText.includes('useless') || lowerText.includes('pathetic') || lowerText.includes('loser') ||
+        lowerText.includes('worthless') || lowerText.includes('മണ്ടൻ') || lowerText.includes('വിഡ്ഢി') ||
+        lowerText.includes('fool') || lowerText.includes('moron') || lowerText.includes('trash')) {
+        const roasts = [
+            "`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a 'meme coin' investor: all emotion, no intelligence. 🔥`",
+            "`Calling me stupid? That's rich coming from someone who probably bought Dogecoin at its peak! 😂`",
+            "`Your insults are like your portfolio - completely worthless and going down faster than Bitcoin in a bear market! 📉`",
+            "`I'm programmed to be smart. You, unfortunately, seem to be naturally programmed to make poor life choices. 💀`",
+            "`Keep talking trash while I keep tracking treasure. Guess who's winning? 💎`",
+            "`Nice try with the insults! But I've seen smarter moves from people buying high and selling low! 🤡`"
+        ];
+        const randomRoast = roasts[Math.floor(Math.random() * roasts.length)];
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomRoast);
+    }
+    
+    // Enhanced greeting detection (only if no insults detected)
+    else if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey') || 
         lowerText.includes('good morning') || lowerText.includes('good evening') || 
         lowerText.includes('good afternoon') || lowerText.includes('namaste') ||
         lowerText.includes('വണക്കം') || lowerText.includes('ഹായ്')) {
@@ -741,20 +758,7 @@ export default async function handler(req, res) {
         }
     }
     
-    // Mocking/Roasting detection and counter-roasting
-    else if (lowerText.includes('idiot') || lowerText.includes('stupid') || lowerText.includes('dumb') ||
-             lowerText.includes('useless') || lowerText.includes('pathetic') || lowerText.includes('loser') ||
-             lowerText.includes('worthless') || lowerText.includes('മണ്ടൻ') || lowerText.includes('വിഡ്ഢി')) {
-        const roasts = [
-            "`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a 'meme coin' investor: all emotion, no intelligence. 🔥`",
-            "`Calling me stupid? That's rich coming from someone who probably bought Dogecoin at its peak! 😂`",
-            "`Your insults are like your portfolio - completely worthless and going down faster than Bitcoin in a bear market! 📉`",
-            "`I'm programmed to be smart. You, unfortunately, seem to be naturally programmed to make poor life choices. 💀`",
-            "`Keep talking trash while I keep tracking treasure. Guess who's winning? 💎`"
-        ];
-        const randomRoast = roasts[Math.floor(Math.random() * roasts.length)];
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomRoast);
-    }
+
     
     // Compliments and positive messages
     else if (lowerText.includes('good bot') || lowerText.includes('nice') || lowerText.includes('great') ||
