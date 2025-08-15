@@ -1,4 +1,4 @@
-// api/webhook.js - Fully Fixed Version for Vercel
+// api/webhook.js - Fixed Version for Telegram API Issues
 
 import axios from 'axios';
 
@@ -94,12 +94,7 @@ async function getTop500() {
 
   } catch (e) {
     console.error("❌ Top500 failed:", e.message);
-    // Fallback to priority list on failure
-    const fallbackMap = {};
-    for (const [sym, id] of Object.entries(priority)) {
-      fallbackMap[sym] = id;
-    }
-    return { topMap: fallbackMap, topById: {} };
+    return { topMap: priority, topById: {} }; // Fallback to priority list
   }
 }
 
@@ -183,9 +178,6 @@ async function getCoinById(id) {
     return r.data.length ? r.data[0] : null;
   } catch (e) {
     console.error("getCoinById failed:", e.message);
-    if (e.response) {
-      console.error('CoinGecko API error:', e.response.status, e.response.data);
-    }
     return null;
   }
 }
@@ -203,9 +195,6 @@ async function getHistoricalData(coinId) {
         return response.data.prices;
     } catch (e) {
         console.error("❌ getHistoricalData failed:", e.message);
-        if (e.response) {
-            console.error('CoinGecko API error:', e.response.status, e.response.data);
-        }
         return null;
     }
 }
@@ -265,184 +254,246 @@ function evaluateExpression(expression) {
   }
 }
 
-// --- Generate QuickChart URL (new) ---
+// --- Generate QuickChart URL (FIXED) ---
 function getChartImageUrl(coinName, historicalData) {
-  const labels = historicalData.map(d => new Date(d[0]).toLocaleDateString());
-  const prices = historicalData.map(d => d[1]);
+  try {
+    // Limit data points to prevent URL length issues
+    const maxPoints = 30;
+    const step = Math.max(1, Math.floor(historicalData.length / maxPoints));
+    const sampledData = historicalData.filter((_, index) => index % step === 0);
+    
+    const labels = sampledData.map(d => {
+      const date = new Date(d[0]);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+    const prices = sampledData.map(d => parseFloat(d[1].toFixed(8)));
 
-  const chartConfig = {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: `${coinName} Price (USD)`,
-        data: prices,
-        fill: false,
-        borderColor: 'rgb(75, 192, 192)',
-        tension: 0.1,
-        borderWidth: 2,
-        pointRadius: 0,
-      }],
-    },
-    options: {
-      title: {
-        display: true,
-        text: `${coinName} Price Chart (30 Days)`,
-        fontSize: 16,
-      },
-      scales: {
-        xAxes: [{
-          type: 'time',
-          time: {
-            unit: 'day'
-          },
-          display: true,
-          scaleLabel: {
-            display: true,
-            labelString: 'Date'
-          }
+    const chartConfig = {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `${coinName} Price`,
+          data: prices,
+          fill: false,
+          borderColor: 'rgb(75, 192, 192)',
+          tension: 0.1,
+          borderWidth: 2,
+          pointRadius: 1,
         }],
-        yAxes: [{
+      },
+      options: {
+        responsive: true,
+        title: {
           display: true,
-          scaleLabel: {
+          text: `${coinName} - 30 Days`,
+          fontSize: 14,
+        },
+        legend: {
+          display: false
+        },
+        scales: {
+          xAxes: [{
             display: true,
-            labelString: 'Price (USD)'
-          }
-        }]
+            scaleLabel: {
+              display: false
+            }
+          }],
+          yAxes: [{
+            display: true,
+            scaleLabel: {
+              display: false
+            }
+          }]
+        }
       }
-    }
-  };
+    };
 
-  const encodedConfig = encodeURIComponent(JSON.stringify(chartConfig));
-  return `https://quickchart.io/chart?c=${encodedConfig}&w=500&h=300`;
+    // Create a more compact chart config
+    const compactConfig = encodeURIComponent(JSON.stringify(chartConfig));
+    return `https://quickchart.io/chart?c=${compactConfig}&w=400&h=250&backgroundColor=white`;
+    
+  } catch (error) {
+    console.error('❌ Chart URL generation failed:', error.message);
+    // Return a simple fallback chart
+    return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+      type: 'line',
+      data: { labels: ['Error'], datasets: [{ data: [0] }] }
+    }))}&w=400&h=250`;
+  }
 }
 
-
-// --- Build reply with monospace formatting ---
+// --- Build reply with monospace formatting (FIXED) ---
 function buildReply(coin, amount) {
-  const price = coin.current_price ?? 0;
-  const total = price * (amount ?? 1);
-  const mc = coin.market_cap ?? null;
-  const fdv = coin.fully_diluted_valuation ?? null;
-  const ath = coin.ath ?? null;
+  try {
+    const price = coin.current_price ?? 0;
+    const total = price * (amount ?? 1);
+    const mc = coin.market_cap ?? null;
+    const fdv = coin.fully_diluted_valuation ?? null;
+    const ath = coin.ath ?? null;
 
-  const lines = [];
-  if (amount != null && amount !== 1) {
-    lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(total)}`);
+    const lines = [];
+    if (amount != null && amount !== 1) {
+      lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(total)}`);
+    }
+    lines.push(`Price: ${fmtPrice(price)}`);
+    lines.push(`MC: ${fmtBig(mc)}`);
+    lines.push(`FDV: ${fmtBig(fdv)}`);
+    lines.push(`ATH: ${fmtPrice(ath)}`);
+
+    // Use simple backticks instead of triple backticks to avoid formatting issues
+    return `\`${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\``;
+  } catch (error) {
+    console.error('❌ buildReply error:', error.message);
+    return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
   }
-  lines.push(`Price: ${fmtPrice(price)}`);
-  lines.push(`MC: ${fmtBig(mc)}`);
-  lines.push(`FDV: ${fmtBig(fdv)}`);
-  lines.push(`ATH: ${fmtPrice(ath)}`);
-
-  return `\`\`\`\n${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\n\`\`\``;
 }
 
-// --- Build gas price reply
+// --- Build gas price reply (FIXED) ---
 function buildGasReply(gasPrices, ethPrice) {
-  if (!gasPrices) {
-    return '`Could not retrieve gas prices. Please try again later.`';
+  try {
+    if (!gasPrices) {
+      return '`Could not retrieve gas prices. Please try again later.`';
+    }
+
+    // A standard ETH transfer costs 21,000 gas units
+    const gasLimit = 21000;
+
+    const calculateCost = (gwei, ethPrice) => {
+      const ethCost = (gwei * gasLimit) / 10**9;
+      return ethCost * ethPrice;
+    };
+
+    const slowCost = calculateCost(gasPrices.low, ethPrice);
+    const averageCost = calculateCost(gasPrices.average, ethPrice);
+    const highCost = calculateCost(gasPrices.high, ethPrice);
+
+    const lines = [];
+    lines.push('Ethereum Gas Prices');
+    lines.push('-------------------');
+    lines.push(`Slow: ${gasPrices.low} Gwei (~${fmtPrice(slowCost)})`);
+    lines.push(`Avg: ${gasPrices.average} Gwei (~${fmtPrice(averageCost)})`);
+    lines.push(`Fast: ${gasPrices.high} Gwei (~${fmtPrice(highCost)})`);
+    lines.push(`ETH: ${fmtPrice(ethPrice)}`);
+
+    // Use simple backticks instead of triple backticks
+    return `\`${lines.join('\n')}\``;
+  } catch (error) {
+    console.error('❌ buildGasReply error:', error.message);
+    return '`Error formatting gas prices`';
   }
-
-  // A standard ETH transfer costs 21,000 gas units
-  const gasLimit = 21000;
-
-  const calculateCost = (gwei, ethPrice) => {
-    const ethCost = (gwei * gasLimit) / 10**9;
-    return ethCost * ethPrice;
-  };
-
-  const slowCost = calculateCost(gasPrices.low, ethPrice);
-  const averageCost = calculateCost(gasPrices.average, ethPrice);
-  const highCost = calculateCost(gasPrices.high, ethPrice);
-
-  const lines = [];
-  lines.push('Current Ethereum Gas Prices');
-  lines.push('-----------------------------');
-  lines.push(`Slow:    ${gasPrices.low} Gwei (~${fmtPrice(slowCost)})`);
-  lines.push(`Average: ${gasPrices.average} Gwei (~${fmtPrice(averageCost)})`);
-  lines.push(`Fast:    ${gasPrices.high} Gwei (~${fmtPrice(highCost)})`);
-  lines.push('-----------------------------');
-  lines.push(`ETH Price: ${fmtPrice(ethPrice)}`);
-
-  return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
 }
 
-// --- Send message with topic support and delete button ---
+// --- Send message with topic support and delete button (FIXED) ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
-  // Check for invalid or empty text before making the API call
-  if (!text || text.trim() === '') {
-    console.error('❌ Refusing to send an empty message.');
-    return; // Stop the function from proceeding
-  }
-  
-  const sendOptions = {
-    chat_id: chatId,
-    text: text,
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: "Delete",
-            callback_data: "delete_message"
-          }
-        ]
-      ]
-    },
-    ...options
-  };
-
-  if (messageThreadId) {
-    sendOptions.message_thread_id = messageThreadId;
-  }
-
   try {
+    // Sanitize the message text
+    const sanitizedText = text.replace(/[^\x00-\x7F]/g, ""); // Remove non-ASCII characters
+    
+    const sendOptions = {
+      chat_id: parseInt(chatId), // Ensure chatId is a number
+      text: sanitizedText,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🗑️ Delete",
+              callback_data: "delete_message"
+            }
+          ]
+        ]
+      },
+      ...options
+    };
+
+    // Only add message_thread_id if it exists and is valid
+    if (messageThreadId && messageThreadId > 0) {
+      sendOptions.message_thread_id = parseInt(messageThreadId);
+    }
+
+    console.log('Sending message with options:', JSON.stringify(sendOptions, null, 2));
+
     const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, sendOptions, {
-      timeout: 10000
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+      }
     });
+    
     return response.data;
   } catch (error) {
-    console.error('Error sending message:', error.message);
+    console.error('❌ Error sending message:', error.message);
     if (error.response) {
-        // Log the actual error response from Telegram for better debugging
-        console.error('Telegram API error response:', error.response.data);
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
     }
-    throw error;
+    
+    // Try sending without parse_mode as fallback
+    try {
+      const fallbackOptions = {
+        chat_id: parseInt(chatId),
+        text: text.replace(/[`*_]/g, ''), // Remove markdown characters
+      };
+      
+      if (messageThreadId && messageThreadId > 0) {
+        fallbackOptions.message_thread_id = parseInt(messageThreadId);
+      }
+      
+      const fallbackResponse = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, fallbackOptions, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      return fallbackResponse.data;
+    } catch (fallbackError) {
+      console.error('❌ Fallback send also failed:', fallbackError.message);
+      throw error;
+    }
   }
 }
 
-// --- Send Photo function (new) ---
+// --- Send Photo function (FIXED) ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '') {
-  const sendOptions = {
-    chat_id: chatId,
-    photo: photoUrl,
-    caption: caption,
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: "Delete",
-            callback_data: "delete_message"
-          }
-        ]
-      ]
-    }
-  };
-
-  if (messageThreadId) {
-    sendOptions.message_thread_id = messageThreadId;
-  }
-
   try {
+    const sendOptions = {
+      chat_id: parseInt(chatId),
+      photo: photoUrl,
+      caption: caption,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🗑️ Delete",
+              callback_data: "delete_message"
+            }
+          ]
+        ]
+      }
+    };
+
+    // Only add message_thread_id if it exists and is valid
+    if (messageThreadId && messageThreadId > 0) {
+      sendOptions.message_thread_id = parseInt(messageThreadId);
+    }
+
+    console.log('Sending photo with URL:', photoUrl);
+
     const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, sendOptions, {
-      timeout: 10000
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/json',
+      }
     });
+    
     return response.data;
   } catch (error) {
-    console.error('Error sending photo:', error.message);
+    console.error('❌ Error sending photo:', error.message);
     if (error.response) {
-        console.error('Telegram API error response:', error.response.data);
+      console.error('Photo response data:', error.response.data);
     }
     throw error;
   }
@@ -486,6 +537,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, message: 'No message or callback in update' });
     }
 
+    // Handle callback queries (delete button)
     if (update.callback_query) {
       const callbackQuery = update.callback_query;
       const chatId = callbackQuery.message.chat.id;
@@ -522,6 +574,9 @@ export default async function handler(req, res) {
     const username = msg.from.username || msg.from.first_name || 'Unknown';
     const chatType = msg.chat.type;
     
+    console.log(`📨 Message from ${username} in ${chatType}: "${text}"`);
+    
+    // Ignore potential crypto addresses
     const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
     if (isAddress) {
       return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
@@ -533,14 +588,16 @@ export default async function handler(req, res) {
       const symbol = parts[1]; // Get symbol from command, e.g. /chart eth
 
       if (command === 'chart' && symbol) {
+        console.log(`📊 Chart request for: ${symbol}`);
         const coin = await getCoinBySymbol(symbol);
         if (coin) {
           const historicalData = await getHistoricalData(coin.id);
-          if (historicalData) {
+          if (historicalData && historicalData.length > 0) {
             const chartImageUrl = getChartImageUrl(coin.name, historicalData);
+            console.log(`📊 Sending chart: ${chartImageUrl}`);
             await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coin.name}* Price Chart (30 Days)`);
           } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to retrieve historical data for ${coin.name}\``);
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coin.name}\``);
           }
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
@@ -554,20 +611,20 @@ export default async function handler(req, res) {
         if (ethPrice && gasPrices) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice));
         } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve ETH gas or price data. Please try again.`');
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`');
         }
       }
       else if (command === 'start') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,   
-          '`Welcome to the Crypto Price Bot!`\n\n`Type /help to see how to use me.`\n\n`Running 24/7 on Vercel`');
+          '`Welcome to Crypto Price Bot! Type /help for commands.`');
       }  
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '```\nUsage:\n\n/eth → ETH price\n/gas → ETH gas price\n/chart eth → ETH price chart\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\n3+5 → 8\n100/5 → 20\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
+          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
       }  
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          `\`\`\`\nBot Status: Working on Vercel\nChat Type: ${msg.chat.type}\nTopic ID: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\n\`\`\``);
+          `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
       }  
       else {
         const coin = await getCoinBySymbol(command);
@@ -578,15 +635,15 @@ export default async function handler(req, res) {
         }
       }  
     } else {
-      // Regular expression to match a simple mathematical expression
+      // Handle math expressions
       const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
       
       if (mathRegex.test(text)) {
         const result = evaluateExpression(text);
         if (result !== null) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Result: ${result}\``);
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`${text} = ${result}\``);
         } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid mathematical expression.`');
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
         }
         return res.status(200).json({ ok: true });
       }
