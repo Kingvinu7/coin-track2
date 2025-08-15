@@ -77,7 +77,7 @@ async function getCoinDataWithChanges(symbol) {
 
     const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
       params: {
-        vs_currency: "usd",
+        vs_currency: "usd,inr",
         ids: coinId,
         price_change_percentage: "1h,24h,7d,30d",
         sparkline: "true"
