@@ -53,14 +53,13 @@ const priority = {
   vet: "vechain",
 };
 
-// --- Get all coin data in a single API call (NEW) ---
+// --- Get all coin data in a single API call (UPDATED) ---
 async function getCoinDataWithChanges(symbol) {
   const s = symbol.toLowerCase();
   let coinId = priority[s];
 
   try {
     if (!coinId) {
-      // If not in priority list, perform a search to find the ID
       const searchResponse = await axios.get("https://api.coingecko.com/api/v3/search", {
         params: { query: s },
         timeout: 15000,
@@ -228,7 +227,7 @@ function getChartImageUrl(coinName, historicalData) {
   }
 }
 
-// --- Build reply with monospace formatting ---
+// --- Build price reply with monospace formatting ---
 function buildReply(coin, amount) {
   try {
     const price = coin.current_price ?? 0;
@@ -260,6 +259,22 @@ function buildReply(coin, amount) {
     return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
   }
 }
+
+// --- Build comparison reply (NEW) ---
+function buildCompareReply(coin1, coin2, theoreticalPrice) {
+  try {
+    const formattedPrice = fmtPrice(theoreticalPrice);
+    const lines = [];
+    lines.push(`If ${coin1.name} (${coin1.symbol.toUpperCase()}) had the market cap of ${coin2.name} (${coin2.symbol.toUpperCase()}),`);
+    lines.push(`its price would be approximately ${formattedPrice}.`);
+
+    return `\`${lines.join('\n')}\``;
+  } catch (error) {
+    console.error('❌ buildCompareReply error:', error.message);
+    return '`Error formatting comparison reply`';
+  }
+}
+
 
 // --- Build gas price reply ---
 function buildGasReply(gasPrices, ethPrice) {
@@ -485,10 +500,10 @@ export default async function handler(req, res) {
     if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
+    // Log only the messages that passed the filter
+    console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
     // --- END OF ENHANCED FILTERING ---
 
-    console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
-    
     const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
     if (isAddress) {
       return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
@@ -523,13 +538,40 @@ export default async function handler(req, res) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`');
         }
       }
+      else if (command === 'compare') {
+        const [symbol1, symbol2] = parts.slice(1);
+        if (symbol1 && symbol2) {
+          const coin1 = await getCoinDataWithChanges(symbol1);
+          const coin2 = await getCoinDataWithChanges(symbol2);
+  
+          if (coin1 && coin2) {
+            const circulatingSupply1 = coin1.circulating_supply;
+            const marketCap2 = coin2.market_cap;
+            let theoreticalPrice = null;
+  
+            if (circulatingSupply1 > 0 && marketCap2 > 0) {
+              theoreticalPrice = marketCap2 / circulatingSupply1;
+            }
+  
+            if (theoreticalPrice) {
+              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildCompareReply(coin1, coin2, theoreticalPrice));
+            } else {
+              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not perform comparison. Missing required data.`');
+            }
+          } else {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`One or both coins were not found.`');
+          }
+        } else {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`');
+        }
+      }
       else if (command === 'start') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,   
           '`Welcome to Crypto Price Bot! Type /help for commands.`');
       }  
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
+          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n/compare eth btc - Compare market caps\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
       }  
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
