@@ -182,6 +182,23 @@ async function getCoinById(id) {
   }
 }
 
+// --- Get historical data for chart ---
+async function getHistoricalData(coinId) {
+    try {
+        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
+            params: {
+                vs_currency: "usd",
+                days: 30, // Default to 30 days of data
+            },
+            timeout: 15000,
+        });
+        return response.data.prices;
+    } catch (e) {
+        console.error("❌ getHistoricalData failed:", e.message);
+        return null;
+    }
+}
+
 // --- Get Ethereum Gas Price ---
 async function getEthGasPrice() {
   try {
@@ -235,6 +252,58 @@ function evaluateExpression(expression) {
     console.error('❌ Calculator evaluation failed:', e.message);
     return null;
   }
+}
+
+// --- Generate QuickChart URL (new) ---
+function getChartImageUrl(coinName, historicalData) {
+  const labels = historicalData.map(d => new Date(d[0]).toLocaleDateString());
+  const prices = historicalData.map(d => d[1]);
+
+  const chartConfig = {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: `${coinName} Price (USD)`,
+        data: prices,
+        fill: false,
+        borderColor: 'rgb(75, 192, 192)',
+        tension: 0.1,
+        borderWidth: 2,
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      title: {
+        display: true,
+        text: `${coinName} Price Chart (30 Days)`,
+        fontSize: 16,
+      },
+      scales: {
+        xAxes: [{
+          type: 'time',
+          time: {
+            unit: 'day'
+          },
+          display: true,
+          scaleLabel: {
+            display: true,
+            labelString: 'Date'
+          }
+        }],
+        yAxes: [{
+          display: true,
+          scaleLabel: {
+            display: true,
+            labelString: 'Price (USD)'
+          }
+        }]
+      }
+    }
+  };
+
+  const encodedConfig = encodeURIComponent(JSON.stringify(chartConfig));
+  return `https://quickchart.io/chart?c=${encodedConfig}&w=500&h=300`;
 }
 
 
@@ -322,6 +391,39 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
   }
 }
 
+// --- Send Photo function (new) ---
+async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '') {
+  const sendOptions = {
+    chat_id: chatId,
+    photo: photoUrl,
+    caption: caption,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "Delete",
+            callback_data: "delete_message"
+          }
+        ]
+      ]
+    }
+  };
+
+  if (messageThreadId) {
+    sendOptions.message_thread_id = messageThreadId;
+  }
+
+  try {
+    const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, sendOptions, {
+      timeout: 10000
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending photo:', error.message);
+    throw error;
+  }
+}
+
 // --- Main webhook handler ---
 export default async function handler(req, res) {
   // Handle CORS and preflight
@@ -402,9 +504,25 @@ export default async function handler(req, res) {
     }
 
     if (text.startsWith('/')) {
-      const command = text.substring(1).toLowerCase().split('@')[0];
-      
-      if (command === 'gas') {
+      const parts = text.substring(1).toLowerCase().split(' ');
+      const command = parts[0].split('@')[0];
+      const symbol = parts[1]; // Get symbol from command, e.g. /chart eth
+
+      if (command === 'chart' && symbol) {
+        const coin = await getCoinBySymbol(symbol);
+        if (coin) {
+          const historicalData = await getHistoricalData(coin.id);
+          if (historicalData) {
+            const chartImageUrl = getChartImageUrl(coin.name, historicalData);
+            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coin.name}* Price Chart (30 Days)`);
+          } else {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to retrieve historical data for ${coin.name}\``);
+          }
+        } else {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
+        }
+      }
+      else if (command === 'gas') {
         const ethCoin = await getCoinBySymbol('eth');
         const ethPrice = ethCoin ? ethCoin.current_price : null;
         const gasPrices = await getEthGasPrice();
@@ -421,7 +539,7 @@ export default async function handler(req, res) {
       }  
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '```\nUsage:\n\n/eth → ETH price\n/gas → ETH gas price\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\n3+5 → 8\n100/5 → 20\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
+          '```\nUsage:\n\n/eth → ETH price\n/gas → ETH gas price\n/chart eth → ETH price chart\n2 eth → value of 2 ETH\neth 0.5 → value of 0.5 ETH\n3+5 → 8\n100/5 → 20\nWorks for top 500 coins by market cap\n\nReply includes:\nPrice\nMC\nFDV\nATH\n```');
       }  
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
