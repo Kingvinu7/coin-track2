@@ -1,5 +1,3 @@
-// api/webhook.js - Final Fixed Version for Telegram Topic/Thread Issues
-
 import axios from 'axios';
 
 // --- Helpers ---
@@ -85,7 +83,6 @@ async function getTop500() {
       topById[c.id] = c;  
     }  
 
-    // Override with priorities  
     for (const [sym, id] of Object.entries(priority)) {  
       topMap[sym] = id;  
     }  
@@ -362,14 +359,14 @@ function buildGasReply(gasPrices, ethPrice) {
   }
 }
 
-// --- Send message with topic support and delete button (FIXED) ---
+// --- Send message with topic support and delete button (FINAL FIX) ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
   if (!text || text.trim() === '') {
     console.error('❌ Refusing to send an empty message.');
     return;
   }
   
-  const sendOptions = {
+  const baseOptions = {
     chat_id: parseInt(chatId),
     text: text,
     parse_mode: 'Markdown',
@@ -381,54 +378,56 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
     ...options
   };
 
-  // Only add message_thread_id if it's a valid, positive number
-  if (messageThreadId && parseInt(messageThreadId) > 0) {
-    sendOptions.message_thread_id = parseInt(messageThreadId);
-  }
-
-  try {
-    console.log('Sending message with options:', JSON.stringify(sendOptions));
-    const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, sendOptions, {
-      timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('❌ Error sending message:', error.message);
-    if (error.response) {
-      console.error('Response data:', error.response.data);
-      console.error('Response status:', error.response.status);
-    }
-    
-    // Fallback: Try sending without parse_mode
+  const trySend = async (opts) => {
     try {
-      const fallbackOptions = {
-        chat_id: parseInt(chatId),
-        text: text.replace(/[`*_]/g, ''),
-      };
-      if (messageThreadId && parseInt(messageThreadId) > 0) {
-        fallbackOptions.message_thread_id = parseInt(messageThreadId);
-      }
-      console.log('Attempting fallback send...');
-      const fallbackResponse = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, fallbackOptions, {
+      console.log('Sending message with options:', JSON.stringify(opts));
+      const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, opts, {
         timeout: 10000,
         headers: {
           'Content-Type': 'application/json',
         }
       });
-      return fallbackResponse.data;
-    } catch (fallbackError) {
-      console.error('❌ Fallback send also failed:', fallbackError.message);
+      return response.data;
+    } catch (error) {
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
+      throw error;
+    }
+  };
+
+  try {
+    // Attempt 1: Try with the provided messageThreadId
+    let attemptOptions = { ...baseOptions };
+    if (messageThreadId && parseInt(messageThreadId) > 0) {
+      attemptOptions.message_thread_id = parseInt(messageThreadId);
+    }
+    return await trySend(attemptOptions);
+
+  } catch (error) {
+    // If the first attempt fails with "Bad Request", try again without the thread ID
+    if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
+      console.warn('⚠️ Thread not found, attempting to send to main chat.');
+      
+      // Attempt 2: Try without message_thread_id
+      try {
+        const fallbackOptions = { ...baseOptions };
+        delete fallbackOptions.message_thread_id;
+        return await trySend(fallbackOptions);
+      } catch (fallbackError) {
+        console.error('❌ Fallback to main chat also failed:', fallbackError.message);
+        throw fallbackError;
+      }
+    } else {
       throw error;
     }
   }
 }
 
-// --- Send Photo function (FIXED) ---
+// --- Send Photo function (FINAL FIX) ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '') {
-  const sendOptions = {
+  const baseOptions = {
     chat_id: parseInt(chatId),
     photo: photoUrl,
     caption: caption,
@@ -440,26 +439,45 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
     }
   };
 
-  // Only add message_thread_id if it's a valid, positive number
-  if (messageThreadId && parseInt(messageThreadId) > 0) {
-    sendOptions.message_thread_id = parseInt(messageThreadId);
-  }
+  const trySend = async (opts) => {
+    try {
+      console.log('Sending photo with URL:', opts.photo);
+      const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, opts, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      return response.data;
+    } catch (error) {
+      if (error.response) {
+        console.error('Photo response data:', error.response.data);
+      }
+      throw error;
+    }
+  };
 
   try {
-    console.log('Sending photo with URL:', photoUrl);
-    const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, sendOptions, {
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('❌ Error sending photo:', error.message);
-    if (error.response) {
-      console.error('Photo response data:', error.response.data);
+    let attemptOptions = { ...baseOptions };
+    if (messageThreadId && parseInt(messageThreadId) > 0) {
+      attemptOptions.message_thread_id = parseInt(messageThreadId);
     }
-    throw error;
+    return await trySend(attemptOptions);
+
+  } catch (error) {
+    if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
+      console.warn('⚠️ Thread not found for photo, attempting to send to main chat.');
+      try {
+        const fallbackOptions = { ...baseOptions };
+        delete fallbackOptions.message_thread_id;
+        return await trySend(fallbackOptions);
+      } catch (fallbackError) {
+        console.error('❌ Fallback photo send also failed:', fallbackError.message);
+        throw fallbackError;
+      }
+    } else {
+      throw error;
+    }
   }
 }
 
