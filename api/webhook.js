@@ -231,9 +231,8 @@ function getChartImageUrl(coinName, historicalData) {
 function buildReply(coin, amount) {
   try {
     const priceUSD = coin.current_price ?? 0;
-    const priceINR = coin.current_price * coin.price_inr_conversion_rate ?? 0; // The INR conversion rate is included in the response
     const totalUSD = priceUSD * (amount ?? 1);
-    const formattedPriceINR = priceINR === 0 ? "N/A" : `₹` + priceINR.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  
     
     // Updated to access top-level properties
     const mc = coin.market_cap ?? null;
@@ -248,7 +247,7 @@ function buildReply(coin, amount) {
     if (amount != null && amount !== 1) {
       lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(totalUSD)}`);
     }
-    lines.push(`Price: ${fmtPrice(priceUSD)} | ${formattedPriceINR}`);
+    lines.push(`Price: ${fmtPrice(priceUSD)}`);
     lines.push(`MC: ${fmtBig(mc)}`);
     lines.push(`FDV: ${fdv}`);
     lines.push(`ATH: ${fmtPrice(ath)}`);
