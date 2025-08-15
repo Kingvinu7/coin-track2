@@ -690,32 +690,109 @@ export default async function handler(req, res) {
         }
       }  
     } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
-        const lowerText = text.toLowerCase();
+    const lowerText = text.toLowerCase();
+    
+    // Enhanced greeting detection
+    if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey') || 
+        lowerText.includes('good morning') || lowerText.includes('good evening') || 
+        lowerText.includes('good afternoon') || lowerText.includes('namaste') ||
+        lowerText.includes('വണക്കം') || lowerText.includes('ഹായ്')) {
+        const greetings = [
+            "`Hello there! Ready to dive into the crypto world? 💰`",
+            "`Hey! Your financial overlord is here to serve. What's on your mind? 📈`",
+            "`Greetings! വില പരിശോധകൻ at your service. Let's talk money! 💎`",
+            "`Hi! Ready to make some smart crypto moves today? 🚀`"
+        ];
+        const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomGreeting);
+    }
+    
+    // Question detection and responses
+    else if (lowerText.includes('?') || lowerText.includes('what') || lowerText.includes('how') || 
+             lowerText.includes('when') || lowerText.includes('where') || lowerText.includes('why') ||
+             lowerText.includes('can you') || lowerText.includes('help')) {
         
-        // --- NEW: Check for greetings first ---
-        if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Hello there! What can I help you with?`');
+        if (lowerText.includes('price') || lowerText.includes('വില')) {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Ask me about any crypto price! Just type the coin name and I\'ll fetch the latest data for you. 📊`');
         }
-        // --- End of new code ---
-
-        else if (lowerText.includes('say a joke in malayalam') || lowerText.includes('malayalam joke')) {
+        else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am your highly advanced crypto companion. You can call me "Your Financial Overlord." 👑`');
+        }
+        else if (lowerText.includes('joke') || lowerText.includes('malayalam joke')) {
             const jokes = [
-                "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ശമ്പളത്തിനെയാണോ?\nഭർത്താവ്: രണ്ടും എനിക്ക് എളുപ്പത്തിൽ കിട്ടുന്നതല്ല!`",
-                "`ടീച്ചർ: 'വായന' എന്ന പദം കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: അമ്മുമ്മേ, അങ്ങോട്ട് മാറ്, എനിക്ക് വായന കാണാൻ പറ്റുന്നില്ല!`",
-                "`സൂപ്പർമാർക്കറ്റിൽ: ഇതിലെ നല്ല ഷാംപൂ ഏതാണ്?\nസെയിൽസ്മാൻ: ഇതാണ്. ഇത് ഉപയോഗിച്ചാൽ തലമുടി പെട്ടെന്ന് വളരും.\nകസ്റ്റമർ: അത് വേണ്ട, അതിട്ടാൽ എനിക്ക് തലമുടിയുടെ പകുതി പോലും കിട്ടില്ല.`"
+                "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ബിറ്റ്കോയിനെയാണോ?\nഭർത്താവ്: രണ്ടിന്റെയും വില ദിവസവും മാറിക്കൊണ്ടിരിക്കുന്നു! 😅`",
+                "`ടീച്ചർ: 'ക്രിപ്റ്റോ' എന്ന വാക്ക് കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: ടീച്ചറേ, എന്റെ പപ്പയുടെ ക്രിപ്റ്റോ പോർട്ട്ഫോളിയോ കണ്ടാൽ അമ്മ കരയും! 😭`",
+                "`ഡോക്ടർ: നിങ്ങൾക്ക് ഹൃദയസ്പന്ദനം കൂടുതലാണ്.\nരോഗി: ഡോക്ടറേ, ബിറ്റ്കോയിൻ ചാർട്ട് നോക്കിയതാണ്! 📈💓`"
             ];
             const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
-
-        } else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am a highly advanced crypto bot. You can call me "Your Financial Overlord."`');
-        } 
-        else if (lowerText.includes('idiot') || lowerText.includes('stupid')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a "meme coin" investor: all emotion, no intelligence.`');
+        }
+        else if (lowerText.includes('help') || lowerText.includes('commands') || lowerText.includes('സഹായം')) {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                '`🤖 വില പരിശോധകൻ Commands:\n\n' +
+                '• Type any crypto name to get price\n' +
+                '• Ask "malayalam joke" for entertainment\n' +
+                '• Say "hi" to greet me\n' +
+                '• I respond to questions and conversations!\n\n' +
+                'Your Financial Overlord is always ready! 👑`');
         }
         else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`That\'s an interesting question! I\'m primarily focused on crypto prices, but I\'m learning to be more conversational. What would you like to know about the crypto world? 🤔`');
         }
+    }
+    
+    // Mocking/Roasting detection and counter-roasting
+    else if (lowerText.includes('idiot') || lowerText.includes('stupid') || lowerText.includes('dumb') ||
+             lowerText.includes('useless') || lowerText.includes('pathetic') || lowerText.includes('loser') ||
+             lowerText.includes('worthless') || lowerText.includes('മണ്ടൻ') || lowerText.includes('വിഡ്ഢി')) {
+        const roasts = [
+            "`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a 'meme coin' investor: all emotion, no intelligence. 🔥`",
+            "`Calling me stupid? That's rich coming from someone who probably bought Dogecoin at its peak! 😂`",
+            "`Your insults are like your portfolio - completely worthless and going down faster than Bitcoin in a bear market! 📉`",
+            "`I'm programmed to be smart. You, unfortunately, seem to be naturally programmed to make poor life choices. 💀`",
+            "`Keep talking trash while I keep tracking treasure. Guess who's winning? 💎`"
+        ];
+        const randomRoast = roasts[Math.floor(Math.random() * roasts.length)];
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomRoast);
+    }
+    
+    // Compliments and positive messages
+    else if (lowerText.includes('good bot') || lowerText.includes('nice') || lowerText.includes('great') ||
+             lowerText.includes('awesome') || lowerText.includes('cool') || lowerText.includes('thanks') ||
+             lowerText.includes('thank you') || lowerText.includes('നന്ദി')) {
+        const positiveResponses = [
+            "`Why thank you! Your taste in bots is as good as your potential crypto gains! 😎`",
+            "`Finally, someone who recognizes true AI excellence! You're going places! 🚀`",
+            "`Appreciate the kind words! Now let's make some money together! 💰`",
+            "`You're welcome! Remember, I'm not just a bot - I'm YOUR bot! 👑`"
+        ];
+        const randomPositive = positiveResponses[Math.floor(Math.random() * positiveResponses.length)];
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomPositive);
+    }
+    
+    // General conversation starters
+    else if (lowerText.includes('how are you') || lowerText.includes('എങ്ങനെയുണ്ട്') || 
+             lowerText.includes('what\'s up') || lowerText.includes('sup')) {
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I\'m running smoother than Bitcoin transactions on Lightning Network! Always ready to serve your crypto needs. How can I help you today? ⚡`');
+    }
+    
+    // Love/relationship jokes
+    else if (lowerText.includes('love') || lowerText.includes('girlfriend') || lowerText.includes('boyfriend') ||
+             lowerText.includes('പ്രണയം') || lowerText.includes('കാമുകി')) {
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Love is temporary, but crypto gains are... well, also temporary. But at least crypto charts don\'t ghost you! 💔📈`');
+    }
+    
+    // Default response for mentions
+    else {
+        const defaultResponses = [
+            "`I am വില പരിശോധകൻ, your serious financial overlord. I speak in facts, figures, and occasional sass. How may I serve your crypto needs today? 👑`",
+            "`You called? Your financial bot is here and ready for action! What's the crypto query? 💼`",
+            "`വില പരിശോധകൻ reporting for duty! Ready to make your portfolio great again! 📊`",
+            "`Mention received and processed! I'm here to talk crypto, crack jokes, or engage in intellectual combat. Your choice! 🤖`"
+        ];
+        const randomDefault = defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomDefault);
+    }
    } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
