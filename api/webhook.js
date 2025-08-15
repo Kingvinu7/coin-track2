@@ -53,7 +53,7 @@ const priority = {
   vet: "vechain",
 };
 
-// --- Get all coin data in a single API call (UPDATED) ---
+// --- Get all coin data in a single API call (UPDATED for INR) ---
 async function getCoinDataWithChanges(symbol) {
   const s = symbol.toLowerCase();
   let coinId = priority[s];
@@ -77,7 +77,7 @@ async function getCoinDataWithChanges(symbol) {
 
     const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
       params: {
-        vs_currency: "usd",
+        vs_currency: "usd,inr",
         ids: coinId,
         price_change_percentage: "1h,24h,7d,30d",
         sparkline: "true"
@@ -227,24 +227,27 @@ function getChartImageUrl(coinName, historicalData) {
   }
 }
 
-// --- Build price reply with monospace formatting ---
+// --- Build price reply with monospace formatting (UPDATED for INR) ---
 function buildReply(coin, amount) {
   try {
-    const price = coin.current_price ?? 0;
-    const total = price * (amount ?? 1);
-    const mc = coin.market_cap ?? null;
-    const ath = coin.ath ?? null;
-    const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
-    const price_change_1h = coin.price_change_percentage_1h_in_currency;
-    const price_change_24h = coin.price_change_percentage_24h_in_currency;
-    const price_change_7d = coin.price_change_percentage_7d_in_currency;
-    const price_change_30d = coin.price_change_percentage_30d_in_currency;
+    const priceUSD = coin.current_price?.usd ?? 0;
+    const priceINR = coin.current_price?.inr ?? 0;
+    const totalUSD = priceUSD * (amount ?? 1);
+    const formattedPriceINR = priceINR === 0 ? "N/A" : `₹` + priceINR.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    
+    const mc = coin.market_cap?.usd ?? null;
+    const ath = coin.ath?.usd ?? null;
+    const fdv = (coin.fully_diluted_valuation?.usd === 0 || coin.fully_diluted_valuation?.usd == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation?.usd);
+    const price_change_1h = coin.price_change_percentage_1h_in_currency?.usd;
+    const price_change_24h = coin.price_change_percentage_24h_in_currency?.usd;
+    const price_change_7d = coin.price_change_percentage_7d_in_currency?.usd;
+    const price_change_30d = coin.price_change_percentage_30d_in_currency?.usd;
 
     const lines = [];
     if (amount != null && amount !== 1) {
-      lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(total)}`);
+      lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(totalUSD)}`);
     }
-    lines.push(`Price: ${fmtPrice(price)}`);
+    lines.push(`Price: ${fmtPrice(priceUSD)} | ${formattedPriceINR}`);
     lines.push(`MC: ${fmtBig(mc)}`);
     lines.push(`FDV: ${fdv}`);
     lines.push(`ATH: ${fmtPrice(ath)}`);
@@ -260,7 +263,7 @@ function buildReply(coin, amount) {
   }
 }
 
-// --- Build comparison reply (NEW) ---
+// --- Build comparison reply (UPDATED) ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
   try {
     const formattedPrice = fmtPrice(theoreticalPrice);
@@ -305,8 +308,8 @@ function buildGasReply(gasPrices, ethPrice) {
   }
 }
 
-// --- Send message with topic support and delete button (FINAL FIX) ---
-async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
+// --- Send message with topic support and refresh/delete buttons (UPDATED) ---
+async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callbackData = '', options = {}) {
   if (!text || text.trim() === '') {
     console.error('❌ Refusing to send an empty message.');
     return;
@@ -318,7 +321,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🗑️ Delete", callback_data: "delete_message" }]
+        [{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
       ]
     },
     ...options
@@ -366,8 +369,8 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
   }
 }
 
-// --- Send Photo function (FINAL FIX) ---
-async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '') {
+// --- Send Photo function (UPDATED for Refresh) ---
+async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '') {
   const baseOptions = {
     chat_id: parseInt(chatId),
     photo: photoUrl,
@@ -375,7 +378,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🗑️ Delete", callback_data: "delete_message" }]
+        [{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
       ]
     }
   };
@@ -421,6 +424,44 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
   }
 }
 
+// --- Edit message with topic support and refresh/delete buttons (NEW) ---
+async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData) {
+    const isPhoto = !!photoUrl;
+    const baseOptions = {
+      chat_id: parseInt(chatId),
+      message_id: parseInt(messageId),
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
+        ]
+      }
+    };
+  
+    try {
+      if (isPhoto) {
+        let options = { ...baseOptions, photo: photoUrl, caption: text };
+        if (messageThreadId) {
+          options.message_thread_id = parseInt(messageThreadId);
+        }
+        await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
+      } else {
+        let options = { ...baseOptions, text: text };
+        if (messageThreadId) {
+          options.message_thread_id = parseInt(messageThreadId);
+        }
+        await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
+      }
+    } catch (error) {
+      if (error.response?.data?.description?.includes('message is not modified')) {
+        console.log('✅ Message content is identical, no edit needed.');
+      } else {
+        console.error('❌ Error editing message:', error.response?.data || error.message);
+      }
+    }
+}
+
+
 // --- Main webhook handler ---
 export default async function handler(req, res) {
   // Handle CORS and preflight
@@ -457,22 +498,87 @@ export default async function handler(req, res) {
       const callbackQuery = update.callback_query;
       const chatId = callbackQuery.message.chat.id;
       const messageId = callbackQuery.message.message_id;
-      
-      if (callbackQuery.data === 'delete_message') {
+      const messageThreadId = callbackQuery.message.message_thread_id;
+      const callbackData = callbackQuery.data;
+
+      await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+        callback_query_id: callbackQuery.id
+      });
+
+      if (callbackData.startsWith('refresh_')) {
+        const originalCommand = callbackData.substring('refresh_'.length);
+        let reply = '';
+        let isPhoto = false;
+        let photoUrl = '';
+
+        if (originalCommand.startsWith('chart_')) {
+          const symbol = originalCommand.substring('chart_'.length);
+          const coinData = await getCoinDataWithChanges(symbol);
+          if (coinData) {
+            const historicalData = await getHistoricalData(coinData.id);
+            if (historicalData && historicalData.length > 0) {
+              reply = `*${coinData.name}* Price Chart (30 Days)`;
+              photoUrl = getChartImageUrl(coinData.name, historicalData);
+              isPhoto = true;
+            } else {
+              reply = `\`Failed to get chart data for ${coinData.name}\``;
+            }
+          } else {
+            reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
+          }
+        }
+        else if (originalCommand === 'gas') {
+          const ethCoin = await getCoinDataWithChanges('eth');
+          const ethPrice = ethCoin ? ethCoin.current_price?.usd : null;
+          const gasPrices = await getEthGasPrice();
+          if (ethPrice && gasPrices) {
+            reply = buildGasReply(gasPrices, ethPrice);
+          } else {
+            reply = '`Failed to retrieve gas data`';
+          }
+        }
+        else if (originalCommand.startsWith('compare_')) {
+          const parts = originalCommand.substring('compare_'.length).split('_');
+          const [symbol1, symbol2] = parts;
+          const coin1 = await getCoinDataWithChanges(symbol1);
+          const coin2 = await getCoinDataWithChanges(symbol2);
+          if (coin1 && coin2) {
+            const circulatingSupply1 = coin1.circulating_supply;
+            const marketCap2 = coin2.market_cap?.usd;
+            let theoreticalPrice = null;
+  
+            if (circulatingSupply1 > 0 && marketCap2 > 0) {
+              theoreticalPrice = marketCap2 / circulatingSupply1;
+            }
+  
+            if (theoreticalPrice) {
+              reply = buildCompareReply(coin1, coin2, theoreticalPrice);
+            } else {
+              reply = '`Could not perform comparison. Missing required data.`';
+            }
+          } else {
+            reply = '`One or both coins were not found.`';
+          }
+        }
+        else { // Standard coin lookup
+          const coin = await getCoinDataWithChanges(originalCommand);
+          if (coin) {
+            reply = buildReply(coin, 1);
+          } else {
+            reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+          }
+        }
+
+        await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, photoUrl, originalCommand);
+
+      } else if (callbackData === 'delete_message') {
         try {
           await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
             chat_id: chatId,
             message_id: messageId
           });
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-            callback_query_id: callbackQuery.id
-          });
         } catch (error) {
           console.error('❌ Error deleting message:', error.message);
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-            callback_query_id: callbackQuery.id,
-            text: "Cannot delete this message"
-          });
         }
       }
       return res.status(200).json({ ok: true });
@@ -500,7 +606,6 @@ export default async function handler(req, res) {
     if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
-    // Log only the messages that passed the filter
     console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
     // --- END OF ENHANCED FILTERING ---
 
@@ -520,22 +625,22 @@ export default async function handler(req, res) {
           const historicalData = await getHistoricalData(coinData.id);
           if (historicalData && historicalData.length > 0) {
             const chartImageUrl = getChartImageUrl(coinData.name, historicalData);
-            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coinData.name}* Price Chart (30 Days)`);
+            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coinData.name}* Price Chart (30 Days)`, `chart_${symbol}`);
           } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coinData.name}\``);
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coinData.name}\``, `chart_${symbol}`);
           }
         } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, `chart_${symbol}`);
         }
       }
       else if (command === 'gas') {
         const ethCoin = await getCoinDataWithChanges('eth');
-        const ethPrice = ethCoin ? ethCoin.current_price : null;
+        const ethPrice = ethCoin ? ethCoin.current_price?.usd : null;
         const gasPrices = await getEthGasPrice();
         if (ethPrice && gasPrices) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice));
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice), 'gas');
         } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`');
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`', 'gas');
         }
       }
       else if (command === 'compare') {
@@ -546,7 +651,7 @@ export default async function handler(req, res) {
   
           if (coin1 && coin2) {
             const circulatingSupply1 = coin1.circulating_supply;
-            const marketCap2 = coin2.market_cap;
+            const marketCap2 = coin2.market_cap?.usd;
             let theoreticalPrice = null;
   
             if (circulatingSupply1 > 0 && marketCap2 > 0) {
@@ -554,15 +659,15 @@ export default async function handler(req, res) {
             }
   
             if (theoreticalPrice) {
-              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildCompareReply(coin1, coin2, theoreticalPrice));
+              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildCompareReply(coin1, coin2, theoreticalPrice), `compare_${symbol1}_${symbol2}`);
             } else {
-              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not perform comparison. Missing required data.`');
+              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not perform comparison. Missing required data.`', `compare_${symbol1}_${symbol2}`);
             }
           } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`One or both coins were not found.`');
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`One or both coins were not found.`', `compare_${symbol1}_${symbol2}`);
           }
         } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`');
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`', `compare_${symbol1}_${symbol2}`);
         }
       }
       else if (command === 'start') {
@@ -580,9 +685,9 @@ export default async function handler(req, res) {
       else {
         const coin = await getCoinDataWithChanges(command);
         if (coin) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1), command);
         } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``, command);
         }
       }  
     } else if (isCalculation) {
@@ -605,9 +710,9 @@ export default async function handler(req, res) {
         if (amount && symbol) {
           const coin = await getCoinDataWithChanges(symbol);
           if (coin) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount), symbol);
           } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, symbol);
           }
         }
     }
