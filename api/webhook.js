@@ -716,8 +716,6 @@ export default async function handler(req, res) {
         else {
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
         }
-     }
-    
    } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
