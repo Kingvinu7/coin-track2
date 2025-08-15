@@ -102,7 +102,7 @@ async function getHistoricalData(coinId) {
     try {
         const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
             params: {
-                vs_currency: "usd",
+                vs_currency: "usd,inr",
                 days: 30,
             },
             timeout: 15000,
@@ -230,19 +230,19 @@ function getChartImageUrl(coinName, historicalData) {
 // --- Build price reply with monospace formatting (UPDATED for INR) ---
 function buildReply(coin, amount) {
   try {
-    const priceUSD = coin.current_price ?? 0;
-    const priceINR = coin.current_price * coin.price_inr_conversion_rate ?? 0; // The INR conversion rate is included in the response
+    const priceUSD = coin.current_price?.usd ?? 0;
+    const priceINR = coin.current_price?.inr ?? 0;
     const totalUSD = priceUSD * (amount ?? 1);
     const formattedPriceINR = priceINR === 0 ? "N/A" : `₹` + priceINR.toLocaleString('en-IN', { maximumFractionDigits: 2 });
     
-    // Updated to access top-level properties
-    const mc = coin.market_cap ?? null;
-    const ath = coin.ath ?? null;
-    const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
-    const price_change_1h = coin.price_change_percentage_1h_in_currency ?? null;
-    const price_change_24h = coin.price_change_percentage_24h_in_currency ?? null;
-    const price_change_7d = coin.price_change_percentage_7d_in_currency ?? null;
-    const price_change_30d = coin.price_change_percentage_30d_in_currency ?? null;
+    // Values are now nested under the currency key
+    const mc = coin.market_cap?.usd ?? null;
+    const ath = coin.ath?.usd ?? null;
+    const fdv = (coin.fully_diluted_valuation?.usd === 0 || coin.fully_diluted_valuation?.usd == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation?.usd);
+    const price_change_1h = coin.price_change_percentage_1h_in_currency?.usd;
+    const price_change_24h = coin.price_change_percentage_24h_in_currency?.usd;
+    const price_change_7d = coin.price_change_percentage_7d_in_currency?.usd;
+    const price_change_30d = coin.price_change_percentage_30d_in_currency?.usd;
 
     const lines = [];
     if (amount != null && amount !== 1) {
@@ -263,6 +263,7 @@ function buildReply(coin, amount) {
     return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
   }
 }
+
 
 // --- Build comparison reply (UPDATED) ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
