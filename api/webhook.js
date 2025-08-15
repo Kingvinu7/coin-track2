@@ -94,7 +94,12 @@ async function getTop500() {
 
   } catch (e) {
     console.error("❌ Top500 failed:", e.message);
-    return { topMap: priority, topById: {} }; // Fallback to priority list
+    // Fallback to priority list on failure
+    const fallbackMap = {};
+    for (const [sym, id] of Object.entries(priority)) {
+      fallbackMap[sym] = id;
+    }
+    return { topMap: fallbackMap, topById: {} };
   }
 }
 
@@ -178,6 +183,9 @@ async function getCoinById(id) {
     return r.data.length ? r.data[0] : null;
   } catch (e) {
     console.error("getCoinById failed:", e.message);
+    if (e.response) {
+      console.error('CoinGecko API error:', e.response.status, e.response.data);
+    }
     return null;
   }
 }
@@ -195,6 +203,9 @@ async function getHistoricalData(coinId) {
         return response.data.prices;
     } catch (e) {
         console.error("❌ getHistoricalData failed:", e.message);
+        if (e.response) {
+            console.error('CoinGecko API error:', e.response.status, e.response.data);
+        }
         return null;
     }
 }
@@ -359,6 +370,12 @@ function buildGasReply(gasPrices, ethPrice) {
 
 // --- Send message with topic support and delete button ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
+  // Check for invalid or empty text before making the API call
+  if (!text || text.trim() === '') {
+    console.error('❌ Refusing to send an empty message.');
+    return; // Stop the function from proceeding
+  }
+  
   const sendOptions = {
     chat_id: chatId,
     text: text,
@@ -387,6 +404,10 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
     return response.data;
   } catch (error) {
     console.error('Error sending message:', error.message);
+    if (error.response) {
+        // Log the actual error response from Telegram for better debugging
+        console.error('Telegram API error response:', error.response.data);
+    }
     throw error;
   }
 }
@@ -420,6 +441,9 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
     return response.data;
   } catch (error) {
     console.error('Error sending photo:', error.message);
+    if (error.response) {
+        console.error('Telegram API error response:', error.response.data);
+    }
     throw error;
   }
 }
