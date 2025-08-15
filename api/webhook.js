@@ -364,42 +364,36 @@ function buildGasReply(gasPrices, ethPrice) {
 
 // --- Send message with topic support and delete button (FIXED) ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, options = {}) {
+  if (!text || text.trim() === '') {
+    console.error('❌ Refusing to send an empty message.');
+    return;
+  }
+  
+  const sendOptions = {
+    chat_id: parseInt(chatId),
+    text: text,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🗑️ Delete", callback_data: "delete_message" }]
+      ]
+    },
+    ...options
+  };
+
+  // Only add message_thread_id if it's a valid, positive number
+  if (messageThreadId && parseInt(messageThreadId) > 0) {
+    sendOptions.message_thread_id = parseInt(messageThreadId);
+  }
+
   try {
-    if (!text || text.trim() === '') {
-      console.error('❌ Refusing to send an empty message.');
-      return;
-    }
-    
-    const sendOptions = {
-      chat_id: parseInt(chatId),
-      text: text,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "🗑️ Delete",
-              callback_data: "delete_message"
-            }
-          ]
-        ]
-      },
-      ...options
-    };
-
-    if (messageThreadId && parseInt(messageThreadId) > 0) {
-      sendOptions.message_thread_id = parseInt(messageThreadId);
-    }
-
-    console.log('Sending message with options:', JSON.stringify(sendOptions, null, 2));
-
+    console.log('Sending message with options:', JSON.stringify(sendOptions));
     const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, sendOptions, {
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
       }
     });
-    
     return response.data;
   } catch (error) {
     console.error('❌ Error sending message:', error.message);
@@ -408,23 +402,22 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
       console.error('Response status:', error.response.status);
     }
     
+    // Fallback: Try sending without parse_mode
     try {
       const fallbackOptions = {
         chat_id: parseInt(chatId),
         text: text.replace(/[`*_]/g, ''),
       };
-      
       if (messageThreadId && parseInt(messageThreadId) > 0) {
         fallbackOptions.message_thread_id = parseInt(messageThreadId);
       }
-      
+      console.log('Attempting fallback send...');
       const fallbackResponse = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, fallbackOptions, {
         timeout: 10000,
         headers: {
           'Content-Type': 'application/json',
         }
       });
-      
       return fallbackResponse.data;
     } catch (fallbackError) {
       console.error('❌ Fallback send also failed:', fallbackError.message);
@@ -435,37 +428,31 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
 
 // --- Send Photo function (FIXED) ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '') {
-  try {
-    const sendOptions = {
-      chat_id: parseInt(chatId),
-      photo: photoUrl,
-      caption: caption,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "🗑️ Delete",
-              callback_data: "delete_message"
-            }
-          ]
-        ]
-      }
-    };
-
-    if (messageThreadId && parseInt(messageThreadId) > 0) {
-      sendOptions.message_thread_id = parseInt(messageThreadId);
+  const sendOptions = {
+    chat_id: parseInt(chatId),
+    photo: photoUrl,
+    caption: caption,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🗑️ Delete", callback_data: "delete_message" }]
+      ]
     }
+  };
 
+  // Only add message_thread_id if it's a valid, positive number
+  if (messageThreadId && parseInt(messageThreadId) > 0) {
+    sendOptions.message_thread_id = parseInt(messageThreadId);
+  }
+
+  try {
     console.log('Sending photo with URL:', photoUrl);
-
     const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, sendOptions, {
       timeout: 15000,
       headers: {
         'Content-Type': 'application/json',
       }
     });
-    
     return response.data;
   } catch (error) {
     console.error('❌ Error sending photo:', error.message);
