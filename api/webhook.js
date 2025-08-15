@@ -102,7 +102,7 @@ async function getHistoricalData(coinId) {
     try {
         const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
             params: {
-                vs_currency: "usd,inr",
+                vs_currency: "usd",
                 days: 30,
             },
             timeout: 15000,
@@ -227,14 +227,13 @@ function getChartImageUrl(coinName, historicalData) {
   }
 }
 
-// --- Build price reply with monospace formatting (UPDATED for INR) ---
+// --- Build price reply with monospace formatting ---
 function buildReply(coin, amount) {
   try {
     const priceUSD = coin.current_price ?? 0;
     const totalUSD = priceUSD * (amount ?? 1);
-  
     
-    // Updated to access top-level properties
+    // Values are now top-level properties
     const mc = coin.market_cap ?? null;
     const ath = coin.ath ?? null;
     const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
@@ -529,7 +528,7 @@ export default async function handler(req, res) {
         }
         else if (originalCommand === 'gas') {
           const ethCoin = await getCoinDataWithChanges('eth');
-          const ethPrice = ethCoin ? ethCoin.current_price?.usd : null;
+          const ethPrice = ethCoin ? ethCoin.current_price : null;
           const gasPrices = await getEthGasPrice();
           if (ethPrice && gasPrices) {
             reply = buildGasReply(gasPrices, ethPrice);
@@ -544,7 +543,7 @@ export default async function handler(req, res) {
           const coin2 = await getCoinDataWithChanges(symbol2);
           if (coin1 && coin2) {
             const circulatingSupply1 = coin1.circulating_supply;
-            const marketCap2 = coin2.market_cap?.usd;
+            const marketCap2 = coin2.market_cap;
             let theoreticalPrice = null;
   
             if (circulatingSupply1 > 0 && marketCap2 > 0) {
@@ -635,7 +634,7 @@ export default async function handler(req, res) {
       }
       else if (command === 'gas') {
         const ethCoin = await getCoinDataWithChanges('eth');
-        const ethPrice = ethCoin ? ethCoin.current_price?.usd : null;
+        const ethPrice = ethCoin ? ethCoin.current_price : null;
         const gasPrices = await getEthGasPrice();
         if (ethPrice && gasPrices) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice), 'gas');
@@ -651,7 +650,7 @@ export default async function handler(req, res) {
   
           if (coin1 && coin2) {
             const circulatingSupply1 = coin1.circulating_supply;
-            const marketCap2 = coin2.market_cap?.usd;
+            const marketCap2 = coin2.market_cap;
             let theoreticalPrice = null;
   
             if (circulatingSupply1 > 0 && marketCap2 > 0) {
@@ -681,7 +680,7 @@ export default async function handler(req, res) {
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
           `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
-      }  
+      }
       else {
         const coin = await getCoinDataWithChanges(command);
         if (coin) {
@@ -690,6 +689,27 @@ export default async function handler(req, res) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``, command);
         }
       }  
+    } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
+        const lowerText = text.toLowerCase();
+        
+        if (lowerText.includes('say a joke in malayalam') || lowerText.includes('malayalam joke')) {
+          const jokes = [
+              "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ശമ്പളത്തിനെയാണോ?\nഭർത്താവ്: രണ്ടും എനിക്ക് എളുപ്പത്തിൽ കിട്ടുന്നതല്ല!`",
+              "`ടീച്ചർ: 'വായന' എന്ന പദം കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: അമ്മുമ്മേ, അങ്ങോട്ട് മാറ്, എനിക്ക് വായന കാണാൻ പറ്റുന്നില്ല!`",
+              "`സൂപ്പർമാർക്കറ്റിൽ: ഇതിലെ നല്ല ഷാംപൂ ഏതാണ്?\nസെയിൽസ്മാൻ: ഇതാണ്. ഇത് ഉപയോഗിച്ചാൽ തലമുടി പെട്ടെന്ന് വളരും.\nകസ്റ്റമർ: അത് വേണ്ട, അതിട്ടാൽ എനിക്ക് തലമുടിയുടെ പകുതി പോലും കിട്ടില്ല.`"
+          ];
+          const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
+
+        } else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am a highly advanced crypto bot. You can call me "Your Financial Overlord."`');
+        } 
+        else if (lowerText.includes('idiot') || lowerText.includes('stupid')) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a "meme coin" investor: all emotion, no intelligence.`');
+        }
+        else {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
+        }
     } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
