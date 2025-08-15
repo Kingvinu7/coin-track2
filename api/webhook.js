@@ -692,25 +692,33 @@ export default async function handler(req, res) {
     } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
         const lowerText = text.toLowerCase();
         
-        if (lowerText.includes('say a joke in malayalam') || lowerText.includes('malayalam joke')) {
-          const jokes = [
-              "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ശമ്പളത്തിനെയാണോ?\nഭർത്താവ്: രണ്ടും എനിക്ക് എളുപ്പത്തിൽ കിട്ടുന്നതല്ല!`",
-              "`ടീച്ചർ: 'വായന' എന്ന പദം കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: അമ്മുമ്മേ, അങ്ങോട്ട് മാറ്, എനിക്ക് വായന കാണാൻ പറ്റുന്നില്ല!`",
-              "`സൂപ്പർമാർക്കറ്റിൽ: ഇതിലെ നല്ല ഷാംപൂ ഏതാണ്?\nസെയിൽസ്മാൻ: ഇതാണ്. ഇത് ഉപയോഗിച്ചാൽ തലമുടി പെട്ടെന്ന് വളരും.\nകസ്റ്റമർ: അത് വേണ്ട, അതിട്ടാൽ എനിക്ക് തലമുടിയുടെ പകുതി പോലും കിട്ടില്ല.`"
-          ];
-          const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
+        // --- NEW: Check for greetings first ---
+        if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey')) {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Hello there! What can I help you with?`');
+        }
+        // --- End of new code ---
+
+        else if (lowerText.includes('say a joke in malayalam') || lowerText.includes('malayalam joke')) {
+            const jokes = [
+                "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ശമ്പളത്തിനെയാണോ?\nഭർത്താവ്: രണ്ടും എനിക്ക് എളുപ്പത്തിൽ കിട്ടുന്നതല്ല!`",
+                "`ടീച്ചർ: 'വായന' എന്ന പദം കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: അമ്മുമ്മേ, അങ്ങോട്ട് മാറ്, എനിക്ക് വായന കാണാൻ പറ്റുന്നില്ല!`",
+                "`സൂപ്പർമാർക്കറ്റിൽ: ഇതിലെ നല്ല ഷാംപൂ ഏതാണ്?\nസെയിൽസ്മാൻ: ഇതാണ്. ഇത് ഉപയോഗിച്ചാൽ തലമുടി പെട്ടെന്ന് വളരും.\nകസ്റ്റമർ: അത് വേണ്ട, അതിട്ടാൽ എനിക്ക് തലമുടിയുടെ പകുതി പോലും കിട്ടില്ല.`"
+            ];
+            const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
 
         } else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am a highly advanced crypto bot. You can call me "Your Financial Overlord."`');
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am a highly advanced crypto bot. You can call me "Your Financial Overlord."`');
         } 
         else if (lowerText.includes('idiot') || lowerText.includes('stupid')) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a "meme coin" investor: all emotion, no intelligence.`');
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a "meme coin" investor: all emotion, no intelligence.`');
         }
         else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
         }
-    } else if (isCalculation) {
+     }
+    
+   } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`${text} = ${result}\``);
