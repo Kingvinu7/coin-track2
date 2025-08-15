@@ -235,7 +235,7 @@ function buildReply(coin, amount) {
     const totalUSD = priceUSD * (amount ?? 1);
     const formattedPriceINR = priceINR === 0 ? "N/A" : `₹` + priceINR.toLocaleString('en-IN', { maximumFractionDigits: 2 });
     
-    // Values are now nested under the currency key
+    // Values are correctly accessed from their respective locations
     const mc = coin.market_cap?.usd ?? null;
     const ath = coin.ath?.usd ?? null;
     const fdv = (coin.fully_diluted_valuation?.usd === 0 || coin.fully_diluted_valuation?.usd == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation?.usd);
@@ -263,7 +263,6 @@ function buildReply(coin, amount) {
     return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
   }
 }
-
 
 // --- Build comparison reply (UPDATED) ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
