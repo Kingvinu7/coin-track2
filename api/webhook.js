@@ -14,6 +14,12 @@ function fmtPrice(n) {
   return "$" + n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
+function fmtChange(n) {
+  if (n == null) return "N/A";
+  const sign = n >= 0 ? '🟢' : '🔴';
+  return `${sign} ${n.toFixed(2)}%`;
+}
+
 // Strong guarantees for common tickers
 const priority = {
   btc: "bitcoin",
@@ -192,6 +198,32 @@ async function getHistoricalData(coinId) {
     }
 }
 
+// --- Get extended price change data (Daily, Weekly, Monthly) ---
+async function getExtendedCoinData(coinId) {
+  try {
+    const response = await axios.get(`https://api.coingecko.com/api/v3/simple/price`, {
+      params: {
+        ids: coinId,
+        vs_currencies: 'usd',
+        include_market_cap: 'true',
+        include_24hr_vol: 'true',
+        include_24hr_change: 'true',
+        include_7d_change: 'true',
+        include_30d_change: 'true',
+        include_last_updated_at: 'true'
+      },
+      timeout: 15000,
+    });
+    if (response.data && response.data[coinId]) {
+      return response.data[coinId];
+    }
+    return null;
+  } catch (e) {
+    console.error(`❌ getExtendedCoinData failed for ${coinId}:`, e.message);
+    return null;
+  }
+}
+
 // --- Get Ethereum Gas Price ---
 async function getEthGasPrice() {
   try {
@@ -306,13 +338,16 @@ function getChartImageUrl(coinName, historicalData) {
 }
 
 // --- Build reply with monospace formatting ---
-function buildReply(coin, amount) {
+function buildReply(coin, amount, priceChangeData) {
   try {
     const price = coin.current_price ?? 0;
     const total = price * (amount ?? 1);
     const mc = coin.market_cap ?? null;
     const fdv = coin.fully_diluted_valuation ?? null;
     const ath = coin.ath ?? null;
+    const price_change_24h = priceChangeData?.['usd_24h_change'];
+    const price_change_7d = priceChangeData?.['usd_7d_change'];
+    const price_change_30d = priceChangeData?.['usd_30d_change'];
 
     const lines = [];
     if (amount != null && amount !== 1) {
@@ -322,6 +357,9 @@ function buildReply(coin, amount) {
     lines.push(`MC: ${fmtBig(mc)}`);
     lines.push(`FDV: ${fmtBig(fdv)}`);
     lines.push(`ATH: ${fmtPrice(ath)}`);
+    lines.push(`1D: ${fmtChange(price_change_24h)}`);
+    lines.push(`7D: ${fmtChange(price_change_7d)}`);
+    lines.push(`30D: ${fmtChange(price_change_30d)}`);
 
     return `\`${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\``;
   } catch (error) {
@@ -548,7 +586,21 @@ export default async function handler(req, res) {
     const text = msg.text.trim();
     const username = msg.from.username || msg.from.first_name || 'Unknown';
     const chatType = msg.chat.type;
+
+    // --- ENHANCED MESSAGE FILTERING LOGIC ---
+    const isCommand = text.startsWith('/');
+    const isReplyToBot = msg.reply_to_message?.from?.username === "YOUR_BOT_USERNAME"; // <-- REPLACE THIS
+    const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
+    const isCalculation = mathRegex.test(text);
+    const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
+    const isCoinCheck = re.test(text);
     
+    if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && chatType === 'group') {
+      console.log(`🗑️ Ignoring general message from ${username}`);
+      return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
+    }
+    // --- END OF ENHANCED FILTERING ---
+
     console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
     
     const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
@@ -556,7 +608,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
     }
 
-    if (text.startsWith('/')) {
+    if (isCommand) {
       const parts = text.substring(1).toLowerCase().split(' ');
       const command = parts[0].split('@')[0];
       const symbol = parts[1];
@@ -601,26 +653,21 @@ export default async function handler(req, res) {
       else {
         const coin = await getCoinBySymbol(command);
         if (coin) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));
+          const priceChangeData = await getExtendedCoinData(coin.id);
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1, priceChangeData));
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);
         }
       }  
-    } else {
-      const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
-      if (mathRegex.test(text)) {
+    } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`${text} = ${result}\``);
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
         }
-        return res.status(200).json({ ok: true });
-      }
-
-      const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
-      const m = text.toLowerCase().match(re);
-      if (m) {
+    } else if (isCoinCheck) {
+        const m = text.toLowerCase().match(re);
         let amount, symbol;
         if (m[1] && m[2]) {
           amount = parseFloat(m[1]);
@@ -632,13 +679,14 @@ export default async function handler(req, res) {
         if (amount && symbol) {
           const coin = await getCoinBySymbol(symbol);
           if (coin) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));
+            const priceChangeData = await getExtendedCoinData(coin.id);
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount, priceChangeData));
           } else {
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
           }
         }
-      }
-    }  
+    }
+    
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error('❌ Webhook error:', error.message);
