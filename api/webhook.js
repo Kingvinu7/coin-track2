@@ -4,8 +4,8 @@ import axios from 'axios';
 function fmtBig(n) {
   if (n == null) return "N/A";
   if (n >= 1e12) return (n / 1e12).toFixed(2) + "T";
-  if (n >= 1e9)  return (n / 1e9).toFixed(2) + "B";
-  if (n >= 1e6)  return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
   return n.toLocaleString();
 }
 
@@ -53,130 +53,47 @@ const priority = {
   vet: "vechain",
 };
 
-// --- Load Top 500 coins ---
-async function getTop500() {
-  try {
-    const [p1, p2] = await Promise.all([
-      axios.get("https://api.coingecko.com/api/v3/coins/markets", {
-        params: {
-          vs_currency: "usd",
-          order: "market_cap_desc",
-          per_page: 250,
-          page: 1,
-          price_change_percentage: "24h",
-        },
-        timeout: 15000,
-      }),
-      axios.get("https://api.coingecko.com/api/v3/coins/markets", {
-        params: {
-          vs_currency: "usd",
-          order: "market_cap_desc",
-          per_page: 250,
-          page: 2,
-          price_change_percentage: "24h",
-        },
-        timeout: 15000,
-      }),
-    ]);
-
-    const topMap = {};  
-    const topById = {};  
-    const coins = [...p1.data, ...p2.data];  
-
-    for (const c of coins) {  
-      const sym = (c.symbol || "").toLowerCase();  
-      if (!topMap[sym]) topMap[sym] = c.id;  
-      topById[c.id] = c;  
-    }  
-
-    for (const [sym, id] of Object.entries(priority)) {  
-      topMap[sym] = id;  
-    }  
-
-    return { topMap, topById };
-
-  } catch (e) {
-    console.error("❌ Top500 failed:", e.message);
-    return { topMap: priority, topById: {} };
-  }
-}
-
-// --- Fallback search ---
-async function fallbackBestBySymbol(symbol) {
-  try {
-    const q = symbol.toLowerCase();
-    const sr = await axios.get("https://api.coingecko.com/api/v3/search", {
-      params: { query: q },
-      timeout: 15000,
-    });
-
-    const candidates = sr.data.coins  
-      .filter(x => (x.symbol || "").toLowerCase() === q)  
-      .slice(0, 5);  
-
-    const pick = candidates.length ? candidates : sr.data.coins.slice(0, 5);  
-    if (!pick.length) return null;  
-
-    const ids = pick.map(x => x.id).join(",");  
-    const mr = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {  
-      params: {  
-        vs_currency: "usd",  
-        ids,  
-        order: "market_cap_desc",  
-        price_change_percentage: "24h",  
-      },  
-      timeout: 15000,  
-    });  
-
-    return mr.data.length ? mr.data : null;
-
-  } catch (e) {
-    console.error("Fallback search failed:", e.message);
-    return null;
-  }
-}
-
-// --- Get coin by symbol ---
-async function getCoinBySymbol(symbol) {
+// --- Get all coin data in a single API call (NEW) ---
+async function getCoinDataWithChanges(symbol) {
   const s = symbol.toLowerCase();
-
-  if (priority[s]) {
-    return await getCoinById(priority[s]);
-  }
+  let coinId = priority[s];
 
   try {
-    const { topMap, topById } = await getTop500();
-    const id = topMap[s];  
-    if (id) {  
-      const row = topById[id];  
-      if (row) return row;  
-      return await getCoinById(id);  
-    }  
+    if (!coinId) {
+      // If not in priority list, perform a search to find the ID
+      const searchResponse = await axios.get("https://api.coingecko.com/api/v3/search", {
+        params: { query: s },
+        timeout: 15000,
+      });
+      const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
+      if (bestMatch) {
+        coinId = bestMatch.id;
+      }
+    }
 
-    const fallbackResults = await fallbackBestBySymbol(s);  
-    return fallbackResults && fallbackResults.length > 0 ? fallbackResults[0] : null;
+    if (!coinId) {
+      console.warn(`⚠️ Could not find a matching ID for symbol: ${s}`);
+      return null;
+    }
 
-  } catch (error) {
-    console.error(`Error getting coin ${s}:`, error.message);
-    return null;
-  }
-}
-
-// --- Get coin by id ---
-async function getCoinById(id) {
-  try {
-    const r = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
+    const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
       params: {
         vs_currency: "usd",
-        ids: id,
-        order: "market_cap_desc",
-        price_change_percentage: "24h",
+        ids: coinId,
+        price_change_percentage: "1h,24h,7d,30d",
+        sparkline: "true"
       },
       timeout: 15000,
     });
-    return r.data.length ? r.data[0] : null;
+
+    if (response.data.length > 0) {
+      return response.data[0];
+    }
+    
+    return null;
+
   } catch (e) {
-    console.error("getCoinById failed:", e.message);
+    console.error(`❌ getCoinDataWithChanges failed for ${s}:`, e.message);
     return null;
   }
 }
@@ -196,32 +113,6 @@ async function getHistoricalData(coinId) {
         console.error("❌ getHistoricalData failed:", e.message);
         return null;
     }
-}
-
-// --- Get extended price change data (Daily, Weekly, Monthly) ---
-async function getExtendedCoinData(coinId) {
-  try {
-    const response = await axios.get(`https://api.coingecko.com/api/v3/simple/price`, {
-      params: {
-        ids: coinId,
-        vs_currencies: 'usd',
-        include_market_cap: 'true',
-        include_24hr_vol: 'true',
-        include_24hr_change: 'true',
-        include_7d_change: 'true',
-        include_30d_change: 'true',
-        include_last_updated_at: 'true'
-      },
-      timeout: 15000,
-    });
-    if (response.data && response.data[coinId]) {
-      return response.data[coinId];
-    }
-    return null;
-  } catch (e) {
-    console.error(`❌ getExtendedCoinData failed for ${coinId}:`, e.message);
-    return null;
-  }
 }
 
 // --- Get Ethereum Gas Price ---
@@ -338,16 +229,17 @@ function getChartImageUrl(coinName, historicalData) {
 }
 
 // --- Build reply with monospace formatting ---
-function buildReply(coin, amount, priceChangeData) {
+function buildReply(coin, amount) {
   try {
     const price = coin.current_price ?? 0;
     const total = price * (amount ?? 1);
     const mc = coin.market_cap ?? null;
-    const fdv = coin.fully_diluted_valuation ?? null;
     const ath = coin.ath ?? null;
-    const price_change_24h = priceChangeData?.['usd_24h_change'];
-    const price_change_7d = priceChangeData?.['usd_7d_change'];
-    const price_change_30d = priceChangeData?.['usd_30d_change'];
+    const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
+    const price_change_1h = coin.price_change_percentage_1h_in_currency;
+    const price_change_24h = coin.price_change_percentage_24h_in_currency;
+    const price_change_7d = coin.price_change_percentage_7d_in_currency;
+    const price_change_30d = coin.price_change_percentage_30d_in_currency;
 
     const lines = [];
     if (amount != null && amount !== 1) {
@@ -355,8 +247,9 @@ function buildReply(coin, amount, priceChangeData) {
     }
     lines.push(`Price: ${fmtPrice(price)}`);
     lines.push(`MC: ${fmtBig(mc)}`);
-    lines.push(`FDV: ${fmtBig(fdv)}`);
+    lines.push(`FDV: ${fdv}`);
     lines.push(`ATH: ${fmtPrice(ath)}`);
+    lines.push(`1H: ${fmtChange(price_change_1h)}`);
     lines.push(`1D: ${fmtChange(price_change_24h)}`);
     lines.push(`7D: ${fmtChange(price_change_7d)}`);
     lines.push(`30D: ${fmtChange(price_change_30d)}`);
@@ -418,7 +311,6 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
 
   const trySend = async (opts) => {
     try {
-      console.log('Sending message with options:', JSON.stringify(opts));
       const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, opts, {
         timeout: 10000,
         headers: {
@@ -436,7 +328,6 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
   };
 
   try {
-    // Attempt 1: Try with the provided messageThreadId
     let attemptOptions = { ...baseOptions };
     if (messageThreadId && parseInt(messageThreadId) > 0) {
       attemptOptions.message_thread_id = parseInt(messageThreadId);
@@ -444,11 +335,8 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, optio
     return await trySend(attemptOptions);
 
   } catch (error) {
-    // If the first attempt fails with "Bad Request", try again without the thread ID
     if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
       console.warn('⚠️ Thread not found, attempting to send to main chat.');
-      
-      // Attempt 2: Try without message_thread_id
       try {
         const fallbackOptions = { ...baseOptions };
         delete fallbackOptions.message_thread_id;
@@ -479,7 +367,6 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
 
   const trySend = async (opts) => {
     try {
-      console.log('Sending photo with URL:', opts.photo);
       const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, opts, {
         timeout: 15000,
         headers: {
@@ -596,7 +483,6 @@ export default async function handler(req, res) {
     const isCoinCheck = re.test(text);
     
     if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && chatType === 'group') {
-      console.log(`🗑️ Ignoring general message from ${username}`);
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
     // --- END OF ENHANCED FILTERING ---
@@ -614,22 +500,21 @@ export default async function handler(req, res) {
       const symbol = parts[1];
       
       if (command === 'chart' && symbol) {
-        console.log(`📊 Chart request for: ${symbol}`);
-        const coin = await getCoinBySymbol(symbol);
-        if (coin) {
-          const historicalData = await getHistoricalData(coin.id);
+        const coinData = await getCoinDataWithChanges(symbol);
+        if (coinData) {
+          const historicalData = await getHistoricalData(coinData.id);
           if (historicalData && historicalData.length > 0) {
-            const chartImageUrl = getChartImageUrl(coin.name, historicalData);
-            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coin.name}* Price Chart (30 Days)`);
+            const chartImageUrl = getChartImageUrl(coinData.name, historicalData);
+            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coinData.name}* Price Chart (30 Days)`);
           } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coin.name}\``);
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coinData.name}\``);
           }
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
         }
       }
       else if (command === 'gas') {
-        const ethCoin = await getCoinBySymbol('eth');
+        const ethCoin = await getCoinDataWithChanges('eth');
         const ethPrice = ethCoin ? ethCoin.current_price : null;
         const gasPrices = await getEthGasPrice();
         if (ethPrice && gasPrices) {
@@ -651,10 +536,9 @@ export default async function handler(req, res) {
           `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
       }  
       else {
-        const coin = await getCoinBySymbol(command);
+        const coin = await getCoinDataWithChanges(command);
         if (coin) {
-          const priceChangeData = await getExtendedCoinData(coin.id);
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1, priceChangeData));
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1));
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``);
         }
@@ -677,10 +561,9 @@ export default async function handler(req, res) {
           amount = parseFloat(m[4]);
         }
         if (amount && symbol) {
-          const coin = await getCoinBySymbol(symbol);
+          const coin = await getCoinDataWithChanges(symbol);
           if (coin) {
-            const priceChangeData = await getExtendedCoinData(coin.id);
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount, priceChangeData));
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount));
           } else {
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``);
           }
