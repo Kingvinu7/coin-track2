@@ -9,13 +9,21 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.64.0",
-    "axios": "^1.6.7"
+    "axios": "^1.6.7",
+    "firebase-admin": "^13.4.0",
+    "node-telegram-bot-api": "^0.64.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["telegram", "bot", "cryptocurrency", "prices", "vercel", "serverless"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "cryptocurrency",
+    "prices",
+    "vercel",
+    "serverless"
+  ],
   "author": "Your Name",
   "license": "MIT"
 }
