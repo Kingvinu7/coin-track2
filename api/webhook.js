@@ -309,8 +309,8 @@ function buildReply(coin, amount) {
 // --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
-    const token = dexscreenerData.baseToken;
-    const pair = dexscreenerData;
+    const token = dexScreenerData.baseToken;
+    const pair = dexScreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
@@ -778,7 +778,7 @@ export default async function handler(req, res) {
           }
         }
         else if (originalCommand.startsWith('leaderboard')) {
-            const reply = await buildLeaderboardReply(chatId);
+            reply = await buildLeaderboardReply(chatId);
             await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
             return res.status(200).json({ ok: true });
         }
@@ -838,8 +838,8 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        // --- LOG THE QUERY TO FIRESTORE (UPDATED) ---
-        logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexscreenerData.baseToken.symbol);
+        // --- LOG THE QUERY TO FIRESTORE (FIXED VARIABLE NAME) ---
+        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
@@ -895,12 +895,15 @@ export default async function handler(req, res) {
             }
   
             if (theoreticalPrice) {
-              reply = buildCompareReply(coin1, coin2, theoreticalPrice);
+              const reply = buildCompareReply(coin1, coin2, theoreticalPrice);
+              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
             } else {
-              reply = '`Could not perform comparison. Missing required data.`';
+              const reply = '`Could not perform comparison. Missing required data.`';
+              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
             }
           } else {
-            reply = '`One or both coins were not found.`';
+            const reply = '`One or both coins were not found.`';
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
           }
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`', `compare_${symbol1}_${symbol2}`);
