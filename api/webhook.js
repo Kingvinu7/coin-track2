@@ -1,4 +1,20 @@
 import axios from 'axios';
+import admin from 'firebase-admin';
+
+// --- Firebase Initialization ---
+// This is the key part for the leaderboard. It loads your private key securely from Vercel.
+if (!admin.apps.length) {
+    try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+    } catch (error) {
+        console.error("Firebase admin initialization failed:", error);
+    }
+}
+const db = admin.firestore();
+
 
 // --- Helpers ---
 function fmtBig(n) {
@@ -157,6 +173,20 @@ async function getCoinFromDexScreener(address) {
   }
 }
 
+// --- Get live price from DexScreener for a specific token (for leaderboard) ---
+async function getLivePriceFromDexScreener(address) {
+  try {
+    const response = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+    if (response.data && response.data.pairs && response.data.pairs.length > 0) {
+      return parseFloat(response.data.pairs[0].priceUsd);
+    }
+    return null;
+  } catch (e) {
+    console.error(`❌ getLivePriceFromDexScreener failed for ${address}:`, e.message);
+    return null;
+  }
+}
+
 // --- Evaluate a mathematical expression safely ---
 function evaluateExpression(expression) {
   try {
@@ -276,7 +306,7 @@ function buildReply(coin, amount) {
   }
 }
 
-// --- Build DexScreener price reply with monospace formatting ---
+// --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
     const token = dexScreenerData.baseToken;
@@ -295,11 +325,19 @@ function buildDexScreenerReply(dexScreenerData) {
     const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
     const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
 
-    const reply = `
+    // Construct the links
+    const dexscreenerLink = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
+    
+    let mexcLink = null;
+    if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
+      mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
+    }
+    
+    let reply = `
 \`💊 ${token.name} (${token.symbol})
 ├ Chain: #${formattedChain}
 ├ Pair: ${formattedExchange}
-├ Address: ${formattedAddress}
+└ Address: ${formattedAddress}
 
 📊 Token Stats
 ├ USD: ${formattedPrice} (${formattedChange1h})
@@ -308,6 +346,17 @@ function buildDexScreenerReply(dexScreenerData) {
 └ LP:  $${lp}
 \`
 `;
+
+    // Add links as a separate markdown block
+    let links = `
+[DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
+`;
+    if (mexcLink) {
+        links += ` | [MEXC](${mexcLink})`;
+    }
+    
+    reply += `\n${links}`;
+
     return reply.trim();
   } catch (error) {
     console.error('❌ buildDexScreenerReply error:', error.message);
@@ -513,6 +562,106 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
     }
 }
 
+// --- Log user queries to Firestore (specifically for DexScreener/meme coins) ---
+async function logUserQuery(user, query, price, symbol) {
+    try {
+        const docRef = db.collection('queries').doc();
+        await docRef.set({
+            userId: user.id,
+            username: user.username || user.first_name || `User${user.id}`,
+            query,
+            symbol,
+            priceAtQuery: price,
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`✅ Logged query for user ${user.id}: ${query}`);
+    } catch (error) {
+        console.error('❌ Failed to log query to Firebase:', error.message);
+    }
+}
+
+// --- Build the leaderboard reply from Firestore data ---
+async function buildLeaderboardReply() {
+    try {
+        const snapshot = await db.collection('queries').orderBy('timestamp', 'desc').get();
+        if (snapshot.empty) {
+            return "`Leaderboard is empty. Be the first to search for a token address!`";
+        }
+
+        const queries = {};
+        const uniqueAddresses = new Set();
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const userId = data.userId;
+            const queryAddress = data.query;
+            const price = data.priceAtQuery;
+            const symbol = data.symbol;
+
+            if (!queries[userId]) {
+                queries[userId] = {
+                    username: data.username,
+                    calls: 0,
+                    totalReturn: 0,
+                    positiveReturns: 0,
+                    queries: []
+                };
+            }
+            queries[userId].calls++;
+            queries[userId].queries.push({ queryAddress, price, symbol });
+            uniqueAddresses.add(queryAddress);
+        });
+        
+        // Fetch current prices for all unique queries
+        const livePrices = {};
+        await Promise.all(Array.from(uniqueAddresses).map(async address => {
+            livePrices[address] = await getLivePriceFromDexScreener(address);
+        }));
+
+        // Calculate returns
+        for (const userId in queries) {
+            const user = queries[userId];
+            user.queries.forEach(q => {
+                const livePrice = livePrices[q.queryAddress];
+                if (livePrice != null && q.price != null && q.price !== 0) {
+                    const returnPct = ((livePrice - q.price) / q.price) * 100;
+                    user.totalReturn += returnPct;
+                    if (returnPct > 0) {
+                        user.positiveReturns++;
+                    }
+                }
+            });
+        }
+        
+        // Sort users by total return
+        const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
+        
+        // Build the final markdown string
+        const lines = [
+            '```',
+            '👑 Token Lord Leaderboard',
+            '-------------------------'
+        ];
+        
+        sortedUsers.slice(0, 10).forEach((user, index) => {
+            const rank = index + 1;
+            const medianReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
+            const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
+
+            lines.push(`#${rank} ${user.username}`);
+            lines.push(`  ├ Calls: ${user.calls}`);
+            lines.push(`  ├ Hit Rate: ${hitRate}%`);
+            lines.push(`  └ Avg Return: ${medianReturn}%`);
+        });
+
+        lines.push('```');
+        return lines.join('\n');
+
+    } catch (error) {
+        console.error('❌ Failed to build leaderboard:', error.message);
+        return '`Failed to build leaderboard. Please try again later.`';
+    }
+}
+
 
 // --- Main webhook handler ---
 export default async function handler(req, res) {
@@ -654,9 +803,9 @@ export default async function handler(req, res) {
     const chatId = msg.chat.id;
     const messageThreadId = msg.message_thread_id;
     const text = msg.text.trim();
-    const username = msg.from.username || msg.from.first_name || 'Unknown';
+    const user = msg.from;
     const chatType = msg.chat.type;
-    
+
     // --- Message filtering logic ---
     const isCommand = text.startsWith('/');
     const isReplyToBot = msg.reply_to_message?.from?.username === "CoinPriceTrack_bot";
@@ -670,14 +819,17 @@ export default async function handler(req, res) {
     if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
-    console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
-
+    
     if (isAddress) {
       const dexScreenerData = await getCoinFromDexScreener(text);
       
       if (dexScreenerData) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
+        
+        // --- LOG THE QUERY TO FIRESTORE ---
+        logUserQuery(user, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
+
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
@@ -688,7 +840,11 @@ export default async function handler(req, res) {
       const command = parts[0].split('@')[0];
       const symbol = parts[1];
       
-      if (command === 'chart' && symbol) {
+      if (command === 'leaderboard') {
+          const reply = await buildLeaderboardReply();
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'leaderboard');
+      }
+      else if (command === 'chart' && symbol) {
         const coinData = await getCoinDataWithChanges(symbol);
         if (coinData) {
           const historicalData = await getHistoricalData(coinData.id);
