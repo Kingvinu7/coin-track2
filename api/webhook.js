@@ -76,7 +76,7 @@ async function getCoinDataWithChanges(symbol) {
 
   try {
     if (!coinId) {
-      const searchResponse = await axios.get("https://api.coingecko.com/api/v3/search", {
+      const searchResponse = await axios.get("[https://api.coingecko.com/api/v3/search](https://api.coingecko.com/api/v3/search)", {
         params: { query: s },
         timeout: 15000,
       });
@@ -91,7 +91,7 @@ async function getCoinDataWithChanges(symbol) {
       return null;
     }
 
-    const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
+    const response = await axios.get("[https://api.coingecko.com/api/v3/coins/markets](https://api.coingecko.com/api/v3/coins/markets)", {
       params: {
         vs_currency: "usd",
         ids: coinId,
@@ -133,7 +133,7 @@ async function getHistoricalData(coinId) {
 // --- Get Ethereum Gas Price ---
 async function getEthGasPrice() {
   try {
-    const response = await axios.get("https://api.etherscan.io/api", {
+    const response = await axios.get("[https://api.etherscan.io/api](https://api.etherscan.io/api)", {
       params: {
         module: "gastracker",
         action: "gasoracle",
@@ -264,7 +264,7 @@ function getChartImageUrl(coinName, historicalData) {
     
   } catch (error) {
     console.error('❌ Chart URL generation failed:', error.message);
-    return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+    return `[https://quickchart.io/chart?c=$](https://quickchart.io/chart?c=$){encodeURIComponent(JSON.stringify({
       type: 'line',
       data: { labels: ['Error'], datasets: [{ data: [0] }] }
     }))}&w=400&h=250`;
@@ -309,8 +309,8 @@ function buildReply(coin, amount) {
 // --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
-    const token = dexScreenerData.baseToken;
-    const pair = dexScreenerData;
+    const token = dexscreenerData.baseToken;
+    const pair = dexscreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
@@ -580,7 +580,7 @@ async function logUserQuery(user, query, price, symbol) {
     }
 }
 
-// --- Build the leaderboard reply from Firestore data ---
+// --- Build the leaderboard reply from Firestore data (UPDATED) ---
 async function buildLeaderboardReply() {
     try {
         const snapshot = await db.collection('queries').orderBy('timestamp', 'desc').get();
@@ -634,27 +634,28 @@ async function buildLeaderboardReply() {
         
         // Sort users by total return
         const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
-        
-        // Build the final markdown string
-        const lines = [
-            '```',
-            '👑 Token Lord Leaderboard',
-            '-------------------------'
-        ];
-        
-        sortedUsers.slice(0, 10).forEach((user, index) => {
+
+        // --- NEW LEADERBOARD FORMATTING ---
+        const mainHeader = `*👑 Token Lord Leaderboard*`;
+        const groupStats = `
+*Group Stats:*
+Period: All Time
+`;
+
+        const leaderboardEntries = sortedUsers.slice(0, 10).map((user, index) => {
             const rank = index + 1;
-            const medianReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
+            const avgReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
             const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
-
-            lines.push(`#${rank} ${user.username}`);
-            lines.push(`  ├ Calls: ${user.calls}`);
-            lines.push(`  ├ Hit Rate: ${hitRate}%`);
-            lines.push(`  └ Avg Return: ${medianReturn}%`);
-        });
-
-        lines.push('```');
-        return lines.join('\n');
+            
+            // Replicate the Phanes bot format
+            return `*#${rank} ${user.username}*
+\`Calls: ${user.calls}
+Hit Rate: ${hitRate}%
+Return: ${avgReturn}%
+\``;
+        }).join('\n');
+        
+        return `${mainHeader}\n\n${groupStats}\n*Top Token Lords*\n${leaderboardEntries}`;
 
     } catch (error) {
         console.error('❌ Failed to build leaderboard:', error.message);
@@ -828,7 +829,7 @@ export default async function handler(req, res) {
         const callbackData = `dexscreener_${text}`;
         
         // --- LOG THE QUERY TO FIRESTORE ---
-        logUserQuery(user, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
+        logUserQuery(user, text, parseFloat(dexScreenerData.priceUsd), dexscreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
