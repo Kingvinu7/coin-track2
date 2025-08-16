@@ -76,7 +76,7 @@ async function getCoinDataWithChanges(symbol) {
 
   try {
     if (!coinId) {
-      const searchResponse = await axios.get("[https://api.coingecko.com/api/v3/search](https://api.coingecko.com/api/v3/search)", {
+      const searchResponse = await axios.get("https://api.coingecko.com/api/v3/search", {
         params: { query: s },
         timeout: 15000,
       });
@@ -91,7 +91,7 @@ async function getCoinDataWithChanges(symbol) {
       return null;
     }
 
-    const response = await axios.get("[https://api.coingecko.com/api/v3/coins/markets](https://api.coingecko.com/api/v3/coins/markets)", {
+    const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
       params: {
         vs_currency: "usd",
         ids: coinId,
@@ -133,7 +133,7 @@ async function getHistoricalData(coinId) {
 // --- Get Ethereum Gas Price ---
 async function getEthGasPrice() {
   try {
-    const response = await axios.get("[https://api.etherscan.io/api](https://api.etherscan.io/api)", {
+    const response = await axios.get("https://api.etherscan.io/api", {
       params: {
         module: "gastracker",
         action: "gasoracle",
@@ -264,7 +264,7 @@ function getChartImageUrl(coinName, historicalData) {
     
   } catch (error) {
     console.error('❌ Chart URL generation failed:', error.message);
-    return `[https://quickchart.io/chart?c=$](https://quickchart.io/chart?c=$){encodeURIComponent(JSON.stringify({
+    return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
       type: 'line',
       data: { labels: ['Error'], datasets: [{ data: [0] }] }
     }))}&w=400&h=250`;
@@ -309,8 +309,8 @@ function buildReply(coin, amount) {
 // --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
-    const token = dexScreenerData.baseToken;
-    const pair = dexScreenerData;
+    const token = dexscreenerData.baseToken;
+    const pair = dexscreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
@@ -563,27 +563,32 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
 }
 
 // --- Log user queries to Firestore (specifically for DexScreener/meme coins) ---
-async function logUserQuery(user, query, price, symbol) {
+async function logUserQuery(user, chatId, query, price, symbol) {
     try {
         const docRef = db.collection('queries').doc();
         await docRef.set({
             userId: user.id,
             username: user.username || user.first_name || `User${user.id}`,
+            chatId: String(chatId), // Store chat ID to filter leaderboards
             query,
             symbol,
             priceAtQuery: price,
             timestamp: admin.firestore.FieldValue.serverTimestamp()
         });
-        console.log(`✅ Logged query for user ${user.id}: ${query}`);
+        console.log(`✅ Logged query for user ${user.id} in chat ${chatId}: ${query}`);
     } catch (error) {
         console.error('❌ Failed to log query to Firebase:', error.message);
     }
 }
 
 // --- Build the leaderboard reply from Firestore data (UPDATED) ---
-async function buildLeaderboardReply() {
+async function buildLeaderboardReply(chatId) {
     try {
-        const snapshot = await db.collection('queries').orderBy('timestamp', 'desc').get();
+        const snapshot = await db.collection('queries')
+            .where('chatId', '==', String(chatId)) // Filter by current chat ID
+            .orderBy('timestamp', 'desc')
+            .get();
+
         if (snapshot.empty) {
             return "`Leaderboard is empty. Be the first to search for a token address!`";
         }
@@ -772,6 +777,11 @@ export default async function handler(req, res) {
             reply = '`One or both coins were not found.`';
           }
         }
+        else if (originalCommand.startsWith('leaderboard')) {
+            const reply = await buildLeaderboardReply(chatId);
+            await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
+            return res.status(200).json({ ok: true });
+        }
         else { // Standard coin lookup
           const coin = await getCoinDataWithChanges(originalCommand);
           if (coin) {
@@ -828,8 +838,8 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        // --- LOG THE QUERY TO FIRESTORE ---
-        logUserQuery(user, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
+        // --- LOG THE QUERY TO FIRESTORE (UPDATED) ---
+        logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexscreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
@@ -842,7 +852,7 @@ export default async function handler(req, res) {
       const symbol = parts[1];
       
       if (command === 'leaderboard') {
-          const reply = await buildLeaderboardReply();
+          const reply = await buildLeaderboardReply(chatId);
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'leaderboard');
       }
       else if (command === 'chart' && symbol) {
