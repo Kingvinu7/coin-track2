@@ -143,6 +143,34 @@ async function getEthGasPrice() {
   }
 }
 
+// --- Get CoinGecko data by address ---
+async function getCoinByAddress(address) {
+  try {
+    const response = await axios.get(`https://api.coingecko.com/api/v3/coins/ethereum/contract/${address}`);
+    if (response.data) {
+      return response.data;
+    }
+    return null;
+  } catch (e) {
+    console.error(`❌ getCoinByAddress failed for ${address}:`, e.message);
+    return null;
+  }
+}
+
+// --- Get coin data from DexScreener (fallback) ---
+async function getCoinFromDexScreener(address) {
+  try {
+    const response = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+    if (response.data && response.data.pairs && response.data.pairs.length > 0) {
+      return response.data.pairs[0];
+    }
+    return null;
+  } catch (e) {
+    console.error(`❌ getCoinFromDexScreener failed for ${address}:`, e.message);
+    return null;
+  }
+}
+
 // --- Evaluate a mathematical expression safely ---
 function evaluateExpression(expression) {
   try {
@@ -259,6 +287,44 @@ function buildReply(coin, amount) {
   } catch (error) {
     console.error('❌ buildReply error:', error.message);
     return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
+  }
+}
+
+// --- Build DexScreener price reply with monospace formatting ---
+function buildDexScreenerReply(dexScreenerData) {
+  try {
+    const token = dexScreenerData.baseToken;
+    const pair = dexScreenerData;
+
+    const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
+    const formattedChain = pair.chainId.toUpperCase();
+    const formattedExchange = pair.dexId.toUpperCase();
+    const formattedPrice = pair.priceUsd ? fmtPrice(parseFloat(pair.priceUsd)) : 'N/A';
+    
+    // Check if priceChange exists before trying to format
+    const change1h = pair.priceChange?.h1;
+    const formattedChange1h = change1h ? fmtChange(change1h) : 'N/A';
+
+    const mc = pair.marketCap ? fmtBig(pair.marketCap) : 'N/A';
+    const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
+    const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
+
+    const reply = `
+\`💊 ${token.name} (${token.symbol})
+├ ${formattedAddress}
+└ #${formattedChain} (${formattedExchange})
+
+📊 Token Stats
+├ USD: ${formattedPrice} (${formattedChange1h})
+├ MC:  $${mc}
+├ Vol: $${vol}
+└ LP:  $${lp}
+\`
+`;
+    return reply.trim();
+  } catch (error) {
+    console.error('❌ buildDexScreenerReply error:', error.message);
+    return '`Error formatting DexScreener reply.`';
   }
 }
 
@@ -510,7 +576,17 @@ export default async function handler(req, res) {
         let isPhoto = false;
         let photoUrl = '';
 
-        if (originalCommand.startsWith('chart_')) {
+        if (originalCommand.startsWith('dexscreener_')) {
+          // --- DexScreener refresh handler ---
+          const address = originalCommand.substring('dexscreener_'.length);
+          const dexScreenerData = await getCoinFromDexScreener(address);
+          if (dexScreenerData) {
+              reply = buildDexScreenerReply(dexScreenerData);
+          } else {
+              reply = '`Could not refresh DexScreener data.`';
+          }
+        }
+        else if (originalCommand.startsWith('chart_')) {
           const symbol = originalCommand.substring('chart_'.length);
           const coinData = await getCoinDataWithChanges(symbol);
           if (coinData) {
@@ -593,27 +669,47 @@ export default async function handler(req, res) {
     const text = msg.text.trim();
     const username = msg.from.username || msg.from.first_name || 'Unknown';
     const chatType = msg.chat.type;
-
-    // --- ENHANCED MESSAGE FILTERING LOGIC ---
+    
+    // --- Message filtering logic ---
     const isCommand = text.startsWith('/');
-    const isReplyToBot = msg.reply_to_message?.from?.username === "YOUR_BOT_USERNAME"; // <-- REPLACE THIS
+    const isReplyToBot = msg.reply_to_message?.from?.username === "CoinPriceTrack_bot";
     const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
     const isCalculation = mathRegex.test(text);
     const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
     const isCoinCheck = re.test(text);
-    
-    if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && chatType === 'group') {
+    const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
+
+    if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
     console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
-    // --- END OF ENHANCED FILTERING ---
 
-    const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
     if (isAddress) {
-      return res.status(200).json({ ok: true, message: 'Ignoring potential address' });
-    }
+      // First, try to get data from CoinGecko
+      const coin = await getCoinByAddress(text);
 
-    if (isCommand) {
+      if (coin) {
+        // CoinGecko format (kept as is)
+        const reply = `\`Found on CoinGecko:\nName: ${coin.name}\nSymbol: ${coin.symbol.toUpperCase()}\nPrice: ${fmtPrice(coin.market_data.current_price.usd)}\``;
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, coin.symbol.toLowerCase());
+      } else {
+        // If CoinGecko fails, fall back to DexScreener
+        const dexScreenerData = await getCoinFromDexScreener(text);
+        
+        if (dexScreenerData) {
+          // Call the new, detailed DexScreener build function
+          const reply = buildDexScreenerReply(dexScreenerData);
+          
+          // Pass a unique callback string for DexScreener
+          const callbackData = `dexscreener_${text}`;
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
+        } else {
+          // If both fail, send a final "not found" message
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address on CoinGecko or DexScreener.`');
+        }
+      }
+    }
+    else if (isCommand) {
       const parts = text.substring(1).toLowerCase().split(' ');
       const command = parts[0].split('@')[0];
       const symbol = parts[1];
@@ -690,114 +786,31 @@ export default async function handler(req, res) {
         }
       }  
     } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
-    const lowerText = text.toLowerCase();
-    
-    // Check for insults first (takes priority over greetings)
-    if (lowerText.includes('idiot') || lowerText.includes('stupid') || lowerText.includes('dumb') ||
-        lowerText.includes('useless') || lowerText.includes('pathetic') || lowerText.includes('loser') ||
-        lowerText.includes('worthless') || lowerText.includes('മണ്ടൻ') || lowerText.includes('വിഡ്ഢി') ||
-        lowerText.includes('fool') || lowerText.includes('moron') || lowerText.includes('trash')) {
-        const roasts = [
-            "`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a 'meme coin' investor: all emotion, no intelligence. 🔥`",
-            "`Calling me stupid? That's rich coming from someone who probably bought Dogecoin at its peak! 😂`",
-            "`Your insults are like your portfolio - completely worthless and going down faster than Bitcoin in a bear market! 📉`",
-            "`I'm programmed to be smart. You, unfortunately, seem to be naturally programmed to make poor life choices. 💀`",
-            "`Keep talking trash while I keep tracking treasure. Guess who's winning? 💎`",
-            "`Nice try with the insults! But I've seen smarter moves from people buying high and selling low! 🤡`"
-        ];
-        const randomRoast = roasts[Math.floor(Math.random() * roasts.length)];
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomRoast);
-    }
-    
-    // Enhanced greeting detection (only if no insults detected)
-    else if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey') || 
-        lowerText.includes('good morning') || lowerText.includes('good evening') || 
-        lowerText.includes('good afternoon') || lowerText.includes('namaste') ||
-        lowerText.includes('വണക്കം') || lowerText.includes('ഹായ്')) {
-        const greetings = [
-            "`Hello there! Ready to dive into the crypto world? 💰`",
-            "`Hey! Your financial overlord is here to serve. What's on your mind? 📈`",
-            "`Greetings! വില പരിശോധകൻ at your service. Let's talk money! 💎`",
-            "`Hi! Ready to make some smart crypto moves today? 🚀`"
-        ];
-        const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomGreeting);
-    }
-    
-    // Question detection and responses
-    else if (lowerText.includes('?') || lowerText.includes('what') || lowerText.includes('how') || 
-             lowerText.includes('when') || lowerText.includes('where') || lowerText.includes('why') ||
-             lowerText.includes('can you') || lowerText.includes('help')) {
+        const lowerText = text.toLowerCase();
         
-        if (lowerText.includes('price') || lowerText.includes('വില')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Ask me about any crypto price! Just type the coin name and I\'ll fetch the latest data for you. 📊`');
+        // --- Check for greetings first ---
+        if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey')) {
+            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Hello there! What can I help you with?`');
         }
-        else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am your highly advanced crypto companion. You can call me "Your Financial Overlord." 👑`');
-        }
-        else if (lowerText.includes('joke') || lowerText.includes('malayalam joke')) {
-            const jokes = [
-                "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ബിറ്റ്കോയിനെയാണോ?\nഭർത്താവ്: രണ്ടിന്റെയും വില ദിവസവും മാറിക്കൊണ്ടിരിക്കുന്നു! 😅`",
-                "`ടീച്ചർ: 'ക്രിപ്റ്റോ' എന്ന വാക്ക് കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: ടീച്ചറേ, എന്റെ പപ്പയുടെ ക്രിപ്റ്റോ പോർട്ട്ഫോളിയോ കണ്ടാൽ അമ്മ കരയും! 😭`",
-                "`ഡോക്ടർ: നിങ്ങൾക്ക് ഹൃദയസ്പന്ദനം കൂടുതലാണ്.\nരോഗി: ഡോക്ടറേ, ബിറ്റ്കോയിൻ ചാർട്ട് നോക്കിയതാണ്! 📈💓`"
-            ];
-            const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
-        }
-        else if (lowerText.includes('help') || lowerText.includes('commands') || lowerText.includes('സഹായം')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                '`🤖 വില പരിശോധകൻ Commands:\n\n' +
-                '• Type any crypto name to get price\n' +
-                '• Ask "malayalam joke" for entertainment\n' +
-                '• Say "hi" to greet me\n' +
-                '• I respond to questions and conversations!\n\n' +
-                'Your Financial Overlord is always ready! 👑`');
+        else if (lowerText.includes('say a joke in malayalam') || lowerText.includes('malayalam joke')) {
+          const jokes = [
+              "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ശമ്പളത്തിനെയാണോ?\nഭർത്താവ്: രണ്ടും എനിക്ക് എളുപ്പത്തിൽ കിട്ടുന്നതല്ല!`",
+              "`ടീച്ചർ: 'വായന' എന്ന പദം കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: അമ്മുമ്മേ, അങ്ങോട്ട് മാറ്, എനിക്ക് വായന കാണാൻ പറ്റുന്നില്ല!`",
+              "`സൂപ്പർമാർക്കറ്റിൽ: ഇതിലെ നല്ല ഷാംപൂ ഏതാണ്?\nസെയിൽസ്മാൻ: ഇതാണ്. ഇത് ഉപയോഗിച്ചാൽ തലമുടി പെട്ടെന്ന് വളരും.\nകസ്റ്റമർ: അത് വേണ്ട, അതിട്ടാൽ എനിക്ക് തലമുടിയുടെ പകുതി പോലും കിട്ടില്ല.`"
+          ];
+          const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
+
+        } else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am a highly advanced crypto bot. You can call me "Your Financial Overlord."`');
+        } 
+        else if (lowerText.includes('idiot') || lowerText.includes('stupid')) {
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a "meme coin" investor: all emotion, no intelligence.`');
         }
         else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`That\'s an interesting question! I\'m primarily focused on crypto prices, but I\'m learning to be more conversational. What would you like to know about the crypto world? 🤔`');
+          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
         }
-    }
-    
-
-    
-    // Compliments and positive messages
-    else if (lowerText.includes('good bot') || lowerText.includes('nice') || lowerText.includes('great') ||
-             lowerText.includes('awesome') || lowerText.includes('cool') || lowerText.includes('thanks') ||
-             lowerText.includes('thank you') || lowerText.includes('നന്ദി')) {
-        const positiveResponses = [
-            "`Why thank you! Your taste in bots is as good as your potential crypto gains! 😎`",
-            "`Finally, someone who recognizes true AI excellence! You're going places! 🚀`",
-            "`Appreciate the kind words! Now let's make some money together! 💰`",
-            "`You're welcome! Remember, I'm not just a bot - I'm YOUR bot! 👑`"
-        ];
-        const randomPositive = positiveResponses[Math.floor(Math.random() * positiveResponses.length)];
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomPositive);
-    }
-    
-    // General conversation starters
-    else if (lowerText.includes('how are you') || lowerText.includes('എങ്ങനെയുണ്ട്') || 
-             lowerText.includes('what\'s up') || lowerText.includes('sup')) {
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I\'m running smoother than Bitcoin transactions on Lightning Network! Always ready to serve your crypto needs. How can I help you today? ⚡`');
-    }
-    
-    // Love/relationship jokes
-    else if (lowerText.includes('love') || lowerText.includes('girlfriend') || lowerText.includes('boyfriend') ||
-             lowerText.includes('പ്രണയം') || lowerText.includes('കാമുകി')) {
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Love is temporary, but crypto gains are... well, also temporary. But at least crypto charts don\'t ghost you! 💔📈`');
-    }
-    
-    // Default response for mentions
-    else {
-        const defaultResponses = [
-            "`I am വില പരിശോധകൻ, your serious financial overlord. I speak in facts, figures, and occasional sass. How may I serve your crypto needs today? 👑`",
-            "`You called? Your financial bot is here and ready for action! What's the crypto query? 💼`",
-            "`വില പരിശോധകൻ reporting for duty! Ready to make your portfolio great again! 📊`",
-            "`Mention received and processed! I'm here to talk crypto, crack jokes, or engage in intellectual combat. Your choice! 🤖`"
-        ];
-        const randomDefault = defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomDefault);
-    }
-   } else if (isCalculation) {
+    } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`${text} = ${result}\``);
