@@ -309,7 +309,7 @@ function buildReply(coin, amount) {
 // --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
-    const token = dexscreenerData.baseToken;
+    const token = dexScreenerData.baseToken;
     const pair = dexscreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
@@ -829,7 +829,7 @@ export default async function handler(req, res) {
         const callbackData = `dexscreener_${text}`;
         
         // --- LOG THE QUERY TO FIRESTORE ---
-        logUserQuery(user, text, parseFloat(dexScreenerData.priceUsd), dexscreenerData.baseToken.symbol);
+        logUserQuery(user, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
