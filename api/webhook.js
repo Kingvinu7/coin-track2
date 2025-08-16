@@ -310,7 +310,7 @@ function buildReply(coin, amount) {
 function buildDexScreenerReply(dexScreenerData) {
   try {
     const token = dexScreenerData.baseToken;
-    const pair = dexscreenerData;
+    const pair = dexScreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
