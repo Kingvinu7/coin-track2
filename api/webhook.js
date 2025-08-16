@@ -336,7 +336,7 @@ function buildDexScreenerReply(dexScreenerData) {
     let mevxLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
       // MEVX Telegram bot link with token address and your referral code
-      mevxLink = `https://t.me/MevxTradingBot?start=${token.address}_Ld8DMWbaLLlQ`;
+      mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
     
     let reply = `
