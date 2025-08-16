@@ -143,21 +143,7 @@ async function getEthGasPrice() {
   }
 }
 
-// --- Get CoinGecko data by address ---
-async function getCoinByAddress(address) {
-  try {
-    const response = await axios.get(`https://api.coingecko.com/api/v3/coins/ethereum/contract/${address}`);
-    if (response.data) {
-      return response.data;
-    }
-    return null;
-  } catch (e) {
-    console.error(`❌ getCoinByAddress failed for ${address}:`, e.message);
-    return null;
-  }
-}
-
-// --- Get coin data from DexScreener (fallback) ---
+// --- Get coin data from DexScreener (address lookup) ---
 async function getCoinFromDexScreener(address) {
   try {
     const response = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
@@ -174,7 +160,7 @@ async function getCoinFromDexScreener(address) {
 // --- Evaluate a mathematical expression safely ---
 function evaluateExpression(expression) {
   try {
-    const sanitizedExpression = expression.replace(/[^0-9+\-*/(). ]/g, '');
+    const sanitizedExpression = expression.replace(/[^0-9+\-*/(). ]/g, ' ');
     if (!sanitizedExpression || /^[+\-*/.]/.test(sanitizedExpression) || /[+\-*/.]$/.test(sanitizedExpression)) {
       return null;
     }
@@ -295,7 +281,7 @@ function buildDexScreenerReply(dexScreenerData) {
   try {
     const token = dexScreenerData.baseToken;
     const pair = dexScreenerData;
-
+    
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
     const formattedExchange = pair.dexId.toUpperCase();
@@ -311,8 +297,9 @@ function buildDexScreenerReply(dexScreenerData) {
 
     const reply = `
 \`💊 ${token.name} (${token.symbol})
-├ ${formattedAddress}
-└ #${formattedChain} (${formattedExchange})
+├ Chain: #${formattedChain}
+├ Pair: ${formattedExchange}
+├ Address: ${formattedAddress}
 
 📊 Token Stats
 ├ USD: ${formattedPrice} (${formattedChange1h})
@@ -677,7 +664,8 @@ export default async function handler(req, res) {
     const isCalculation = mathRegex.test(text);
     const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
     const isCoinCheck = re.test(text);
-    const isAddress = text.length > 20 && text.length < 65 && /^(0x)?[a-fA-F0-9]+$/.test(text);
+    // Updated isAddress regex to support both Ethereum (42 chars) and Solana (32, 44 chars) addresses
+    const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
     if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
@@ -685,28 +673,14 @@ export default async function handler(req, res) {
     console.log(`📨 Message from ${username} in ${chatType}: "${text}" (Thread ID: ${messageThreadId})`);
 
     if (isAddress) {
-      // First, try to get data from CoinGecko
-      const coin = await getCoinByAddress(text);
-
-      if (coin) {
-        // CoinGecko format (kept as is)
-        const reply = `\`Found on CoinGecko:\nName: ${coin.name}\nSymbol: ${coin.symbol.toUpperCase()}\nPrice: ${fmtPrice(coin.market_data.current_price.usd)}\``;
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, coin.symbol.toLowerCase());
+      const dexScreenerData = await getCoinFromDexScreener(text);
+      
+      if (dexScreenerData) {
+        const reply = buildDexScreenerReply(dexScreenerData);
+        const callbackData = `dexscreener_${text}`;
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
-        // If CoinGecko fails, fall back to DexScreener
-        const dexScreenerData = await getCoinFromDexScreener(text);
-        
-        if (dexScreenerData) {
-          // Call the new, detailed DexScreener build function
-          const reply = buildDexScreenerReply(dexScreenerData);
-          
-          // Pass a unique callback string for DexScreener
-          const callbackData = `dexscreener_${text}`;
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
-        } else {
-          // If both fail, send a final "not found" message
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address on CoinGecko or DexScreener.`');
-        }
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
       }
     }
     else if (isCommand) {
@@ -754,12 +728,12 @@ export default async function handler(req, res) {
             }
   
             if (theoreticalPrice) {
-              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildCompareReply(coin1, coin2, theoreticalPrice), `compare_${symbol1}_${symbol2}`);
+              reply = buildCompareReply(coin1, coin2, theoreticalPrice);
             } else {
-              await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not perform comparison. Missing required data.`', `compare_${symbol1}_${symbol2}`);
+              reply = '`Could not perform comparison. Missing required data.`';
             }
           } else {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`One or both coins were not found.`', `compare_${symbol1}_${symbol2}`);
+            reply = '`One or both coins were not found.`';
           }
         } else {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`', `compare_${symbol1}_${symbol2}`);
@@ -788,7 +762,6 @@ export default async function handler(req, res) {
     } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
         const lowerText = text.toLowerCase();
         
-        // --- Check for greetings first ---
         if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey')) {
             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Hello there! What can I help you with?`');
         }
