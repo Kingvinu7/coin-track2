@@ -332,6 +332,12 @@ function buildDexScreenerReply(dexScreenerData) {
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
       mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
     }
+
+    let mevxLink = null;
+    if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
+      // MEVX Telegram bot link with token address and your referral code
+      mevxLink = `https://t.me/Mevx?start=${token.address}_Ld8DMWbaLLlQ`;
+    }
     
     let reply = `
 \`💊 ${token.name} (${token.symbol})
@@ -353,6 +359,9 @@ function buildDexScreenerReply(dexScreenerData) {
 `;
     if (mexcLink) {
         links += ` | [MEXC](${mexcLink})`;
+    }
+    if (mevxLink) {
+        links += ` | [MEVX](${mevxLink})`;
     }
     
     reply += `\n${links}`;
@@ -586,7 +595,6 @@ async function buildLeaderboardReply(chatId) {
     try {
         const snapshot = await db.collection('queries')
             .where('chatId', '==', String(chatId)) // Filter by current chat ID
-            .orderBy('timestamp', 'desc')
             .get();
 
         if (snapshot.empty) {
