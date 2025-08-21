@@ -360,6 +360,9 @@ let mevxLink = null;
     if (mexcLink) {
         links += ` | [MEXC](${mexcLink})`;
     }
+        if (mevxLink) {
+        links += ` | [MEVX](${mevxLink})`;
+        }
     
     reply += `\n${links}`;
 
@@ -678,9 +681,8 @@ async function getGeminiReply(prompt) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            systemInstruction: "You are വില പരിശോധകൻ, a helpful cryptocurrency bot. Your responses should be accurate and not contain information after your knowledge cutoff. When asked who you are, state that you are വില പരിശോധകൻ.",
-        });
+            model: "gemini-1.5-flash" });
+            
         
         const result = await model.generateContent(prompt);
         const response = await result.response;
