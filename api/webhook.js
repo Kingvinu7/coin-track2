@@ -332,7 +332,13 @@ function buildDexScreenerReply(dexScreenerData) {
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
       mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
     }
-    
+
+let mevxLink = null;
+    if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
+      // MEVX Telegram bot link with token address and your referral code
+      mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
+    }
+      
     let reply = `
 \`💊 ${token.name} (${token.symbol})
 ├ Chain: #${formattedChain}
