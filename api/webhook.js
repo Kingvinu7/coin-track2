@@ -309,8 +309,8 @@ function buildReply(coin, amount) {
 // --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
-    const token = dexscreenerData.baseToken;
-    const pair = dexscreenerData;
+    const token = dexScreenerData.baseToken;
+    const pair = dexScreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
@@ -326,7 +326,7 @@ function buildDexScreenerReply(dexScreenerData) {
     const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
 
     // Construct the links
-    const dexscreenerLink = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
+    const dexScreenerLink = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
     
     let mexcLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
@@ -875,7 +875,7 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexscreenerData.baseToken.symbol);
+        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
