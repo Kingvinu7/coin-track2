@@ -836,8 +836,8 @@ export default async function handler(req, res) {
     const chatType = msg.chat.type;
     const botUsername = "CoinPriceTrack_bot"; 
 
-    // --- Chatbot reply handling logic: Only reply to /ask command ---
-    if (text.startsWith('/ask')) {
+    // --- Chatbot reply handling logic: Only reply to /que command ---
+    if (text.startsWith('/que')) {
         const prompt = text.substring(4).trim();
         if (prompt.length > 0) {
             const responseText = await getGeminiReply(prompt);
