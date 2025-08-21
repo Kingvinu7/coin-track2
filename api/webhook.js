@@ -849,7 +849,7 @@ export default async function handler(req, res) {
         } else {
             await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                 chat_id: chatId,
-                text: '`Please provide a query after the /ask command.`',
+                text: '`Please provide a query after the /que command.`',
                 reply_to_message_id: msg.message_id
             });
         }
