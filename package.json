@@ -9,7 +9,9 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.6.7",
+    "dotenv": "^17.2.1",
     "firebase-admin": "^13.4.0",
     "node-telegram-bot-api": "^0.64.0"
   },

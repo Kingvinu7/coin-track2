@@ -1,8 +1,8 @@
 import axios from 'axios';
 import admin from 'firebase-admin';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // --- Firebase Initialization ---
-// This is the key part for the leaderboard. It loads your private key securely from Vercel.
 if (!admin.apps.length) {
     try {
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -309,8 +309,8 @@ function buildReply(coin, amount) {
 // --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
   try {
-    const token = dexScreenerData.baseToken;
-    const pair = dexScreenerData;
+    const token = dexscreenerData.baseToken;
+    const pair = dexscreenerData;
     
     const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
     const formattedChain = pair.chainId.toUpperCase();
@@ -331,12 +331,6 @@ function buildDexScreenerReply(dexScreenerData) {
     let mexcLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
       mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
-    }
-
-    let mevxLink = null;
-    if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
-      // MEVX Telegram bot link with token address and your referral code
-      mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
     
     let reply = `
@@ -359,9 +353,6 @@ function buildDexScreenerReply(dexScreenerData) {
 `;
     if (mexcLink) {
         links += ` | [MEXC](${mexcLink})`;
-    }
-    if (mevxLink) {
-        links += ` | [MEVX](${mevxLink})`;
     }
     
     reply += `\n${links}`;
@@ -676,6 +667,22 @@ Return: ${avgReturn}%
     }
 }
 
+// --- NEW: Function to get a reply from Google's Generative AI ---
+async function getGeminiReply(prompt) {
+    try {
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        return text;
+    } catch (e) {
+        console.error("❌ Google Generative AI API failed:", e.message);
+        return "I'm sorry, I'm having trouble thinking right now. Please try again later.";
+    }
+}
+
 
 // --- Main webhook handler ---
 export default async function handler(req, res) {
@@ -824,10 +831,11 @@ export default async function handler(req, res) {
     const text = msg.text.trim();
     const user = msg.from;
     const chatType = msg.chat.type;
+    const botUsername = "CoinPriceTrack_bot"; // Change this to your bot's username
 
     // --- Message filtering logic ---
     const isCommand = text.startsWith('/');
-    const isReplyToBot = msg.reply_to_message?.from?.username === "CoinPriceTrack_bot";
+    const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
     const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
     const isCalculation = mathRegex.test(text);
     const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
@@ -835,7 +843,19 @@ export default async function handler(req, res) {
     // Updated isAddress regex to support both Ethereum (42 chars) and Solana (32, 44 chars) addresses
     const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
-    if (!isCommand && !isReplyToBot && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
+    // --- Chatbot reply handling logic: Only reply when the user replies to the bot ---
+    if (isReplyToBot) {
+        const responseText = await getGeminiReply(text);
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: chatId,
+            text: responseText,
+            reply_to_message_id: msg.message_id
+        });
+        return res.status(200).json({ ok: true });
+    }
+
+    // --- Original message filtering logic ---
+    if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
     
@@ -846,7 +866,6 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        // --- LOG THE QUERY TO FIRESTORE (FIXED VARIABLE NAME) ---
         await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
