@@ -671,7 +671,10 @@ Return: ${avgReturn}%
 async function getGeminiReply(prompt) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-flash",
+            systemInstruction: "You are വില പരിശോധകൻ, a helpful cryptocurrency bot. Your responses should be accurate and not contain information after your knowledge cutoff. When asked who you are, state that you are വില പരിശോധകൻ.",
+        });
         
         const result = await model.generateContent(prompt);
         const response = await result.response;
@@ -831,30 +834,36 @@ export default async function handler(req, res) {
     const text = msg.text.trim();
     const user = msg.from;
     const chatType = msg.chat.type;
-    const botUsername = "CoinPriceTrack_bot"; // Change this to your bot's username
+    const botUsername = "CoinPriceTrack_bot"; 
 
-    // --- Message filtering logic ---
-    const isCommand = text.startsWith('/');
-    const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
-    const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
-    const isCalculation = mathRegex.test(text);
-    const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
-    const isCoinCheck = re.test(text);
-    // Updated isAddress regex to support both Ethereum (42 chars) and Solana (32, 44 chars) addresses
-    const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
-
-    // --- Chatbot reply handling logic: Only reply when the user replies to the bot ---
-    if (isReplyToBot) {
-        const responseText = await getGeminiReply(text);
-        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: chatId,
-            text: responseText,
-            reply_to_message_id: msg.message_id
-        });
+    // --- Chatbot reply handling logic: Only reply to /ask command ---
+    if (text.startsWith('/ask')) {
+        const prompt = text.substring(4).trim();
+        if (prompt.length > 0) {
+            const responseText = await getGeminiReply(prompt);
+            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                chat_id: chatId,
+                text: responseText,
+                reply_to_message_id: msg.message_id
+            });
+        } else {
+            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                chat_id: chatId,
+                text: '`Please provide a query after the /ask command.`',
+                reply_to_message_id: msg.message_id
+            });
+        }
         return res.status(200).json({ ok: true });
     }
 
     // --- Original message filtering logic ---
+    const isCommand = text.startsWith('/');
+    const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
+    const isCalculation = mathRegex.test(text);
+    const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
+    const isCoinCheck = re.test(text);
+    const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
+
     if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
       return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
     }
@@ -866,7 +875,7 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
+        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexscreenerData.baseToken.symbol);
 
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
@@ -956,30 +965,6 @@ export default async function handler(req, res) {
           await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``, command);
         }
       }  
-    } else if (text.includes('@CoinPriceTrack_bot') || text.includes('വില പരിശോധകൻ') || text.toLowerCase().includes('vp')) {
-        const lowerText = text.toLowerCase();
-        
-        if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('hey')) {
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Hello there! What can I help you with?`');
-        }
-        else if (lowerText.includes('say a joke in malayalam') || lowerText.includes('malayalam joke')) {
-          const jokes = [
-              "`ഭാര്യ: നിങ്ങൾക്കിഷ്ടം എന്നെയാണോ അതോ ശമ്പളത്തിനെയാണോ?\nഭർത്താവ്: രണ്ടും എനിക്ക് എളുപ്പത്തിൽ കിട്ടുന്നതല്ല!`",
-              "`ടീച്ചർ: 'വായന' എന്ന പദം കൊണ്ട് ഒരു വാചകം ഉണ്ടാക്കാമോ?\nകുട്ടി: അമ്മുമ്മേ, അങ്ങോട്ട് മാറ്, എനിക്ക് വായന കാണാൻ പറ്റുന്നില്ല!`",
-              "`സൂപ്പർമാർക്കറ്റിൽ: ഇതിലെ നല്ല ഷാംപൂ ഏതാണ്?\nസെയിൽസ്മാൻ: ഇതാണ്. ഇത് ഉപയോഗിച്ചാൽ തലമുടി പെട്ടെന്ന് വളരും.\nകസ്റ്റമർ: അത് വേണ്ട, അതിട്ടാൽ എനിക്ക് തലമുടിയുടെ പകുതി പോലും കിട്ടില്ല.`"
-          ];
-          const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, randomJoke);
-
-        } else if (lowerText.includes('what\'s your name') || lowerText.includes('who are you')) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`My name is വില പരിശോധകൻ. I am a highly advanced crypto bot. You can call me "Your Financial Overlord."`');
-        } 
-        else if (lowerText.includes('idiot') || lowerText.includes('stupid')) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I may be a bot, but at least I understand crypto. You, on the other hand, just provided a perfect example of a "meme coin" investor: all emotion, no intelligence.`');
-        }
-        else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`I am a serious financial bot. I only speak in facts and figures. Do not question my authority.`');
-        }
     } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
