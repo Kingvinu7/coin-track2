@@ -853,12 +853,14 @@ export default async function handler(req, res) {
                 chat_id: chatId,
                 text: responseText,
                 reply_to_message_id: msg.message_id
+                parse_mode: "HTML"
             });
     } else {
             await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                 chat_id: chatId,
                 text: '`Please provide a query after the /que command.`',
                 reply_to_message_id: msg.message_id
+                parse_mode: "HTML"
             });
         }
         return res.status(200).json({ ok: true });
