@@ -15,133 +15,6 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// --- Mobile-Friendly Prompt Engineering Functions ---
-function analyzeQuestionAndCreatePrompt(userInput) {
-  const input = userInput.toLowerCase();
-  let systemPrompt = "";
-  
-  // Detect FUN/CASUAL/ROAST questions first
-  if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
-    systemPrompt = `
-You are a witty roast comedian with a playful attitude.
-- Give ONE funny roast (1-2 sentences max)
-- Keep it playful, not mean
-- End with "Just kidding!" or similar
-- Total: 2-3 sentences, under 300 characters`;
-    
-  } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') || 
-             input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') || 
-             input.includes('crush') || input.includes('tinder') || input.includes('relationship advice') ||
-             input.includes('awkward') || input.includes('embarrassing')) {
-    systemPrompt = `
-You are a fun friend giving dating advice with humor.
-- Start with ONE funny observation
-- Give ONE practical tip
-- End with encouragement
-- Total: 3 sentences max, under 350 characters`;
-    
-  } else if (input.includes('help me get') || input.includes('how to impress') || input.includes('what should i say') ||
-             input.includes('pick up line') || input.includes('first date') || input.includes('asking out')) {
-    systemPrompt = `
-You are a confident wingman giving quick advice.
-- Give ONE key tip immediately
-- Mention ONE thing to avoid
-- End with motivation
-- Total: 3 sentences max, under 350 characters`;
-    
-  } else if (input.includes('how to') || input.includes('how do i') || input.includes('how can i')) {
-    systemPrompt = `
-Give concise step-by-step instructions:
-- List 3 simple steps maximum  
-- One sentence per step
-- Be direct and actionable
-- Total: under 400 characters`;
-    
-  } else if (input.includes('what is') || input.includes('what are') || input.includes('define')) {
-    systemPrompt = `
-Explain concepts simply:
-- One clear definition sentence
-- One example or analogy
-- Why it matters (optional)
-- Total: 2-3 sentences, under 300 characters`;
-    
-  } else if (input.includes('why') || input.includes('reason')) {
-    systemPrompt = `
-Explain reasoning briefly:
-- Start with main reason
-- Give 1-2 supporting points
-- Keep it simple
-- Total: 2-3 sentences, under 350 characters`;
-    
-  } else if (input.includes('vs') || input.includes('versus') || input.includes('compare') || input.includes('difference')) {
-    systemPrompt = `
-Make a quick comparison:
-- Key difference in one sentence
-- When to choose each (brief)
-- Total: 2-3 sentences max, under 350 characters`;
-    
-  } else if (input.includes('best') || input.includes('recommend') || input.includes('suggest') || input.includes('should i')) {
-    systemPrompt = `
-Give concise recommendations:
-- Top recommendation with reason
-- Brief alternative (optional)
-- Total: 2-3 sentences, under 300 characters`;
-    
-  } else if (input.includes('problem') || input.includes('error') || input.includes('fix') || input.includes('solve') || input.includes('troubleshoot')) {
-    systemPrompt = `
-Provide quick troubleshooting:
-- Most likely solution first
-- One backup option
-- Total: 2-3 sentences, under 350 characters`;
-    
-  } else {
-    systemPrompt = `
-Be a helpful, concise assistant:
-- Answer directly and clearly
-- Keep it brief and useful
-- Total: 2-3 sentences max, under 300 characters`;
-  }
-  
-  systemPrompt += `
-
-CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
-- Maximum 400 characters total (STRICT LIMIT)
-- Use 2-3 short sentences maximum
-- No markdown formatting (* _ \` [ ] { } etc.)
-- Simple, conversational language
-- Direct and to-the-point
-- If you can't fit everything, prioritize most important info
-
-User's question: ${userInput}`;
-
-  return systemPrompt;
-}
-
-// Enhanced message splitting for mobile readability
-function splitMessage(text, maxLength = 600) {
-  const parts = [];
-  while (text.length > maxLength) {
-    // Try to break at natural points
-    let idx = text.lastIndexOf('\n', maxLength);
-    if (idx === -1) {
-      idx = text.lastIndexOf('.', maxLength);
-      if (idx === -1) {
-        idx = text.lastIndexOf('!', maxLength);
-        if (idx === -1) {
-          idx = text.lastIndexOf('?', maxLength);
-          if (idx === -1) {
-            idx = text.lastIndexOf(' ', maxLength);
-            if (idx === -1) idx = maxLength;
-          }
-        }
-      }
-    }
-    parts.push(text.substring(0, idx).trim());
-    text = text.substring(idx).trim();
-  }
-  if (text.length > 0) parts.push(text);
-  return parts;
-}
 
 // --- Helpers ---
 function fmtBig(n) {
@@ -196,7 +69,7 @@ const priority = {
   vet: "vechain",
 };
 
-// --- Get all coin data in a single API call ---
+// --- Get all coin data in a single API call (UPDATED for INR) ---
 async function getCoinDataWithChanges(symbol) {
   const s = symbol.toLowerCase();
   let coinId = priority[s];
@@ -404,6 +277,7 @@ function buildReply(coin, amount) {
     const priceUSD = coin.current_price ?? 0;
     const totalUSD = priceUSD * (amount ?? 1);
     
+    // Values are now top-level properties
     const mc = coin.market_cap ?? null;
     const ath = coin.ath ?? null;
     const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
@@ -443,6 +317,7 @@ function buildDexScreenerReply(dexScreenerData) {
     const formattedExchange = pair.dexId.toUpperCase();
     const formattedPrice = pair.priceUsd ? fmtPrice(parseFloat(pair.priceUsd)) : 'N/A';
     
+    // Check if priceChange exists before trying to format
     const change1h = pair.priceChange?.h1;
     const formattedChange1h = change1h ? fmtChange(change1h) : 'N/A';
 
@@ -450,13 +325,17 @@ function buildDexScreenerReply(dexScreenerData) {
     const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
     const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
 
+    // Construct the links
+    const dexScreenerLink = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
+    
     let mexcLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
       mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
     }
 
-    let mevxLink = null;
+let mevxLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
+      // MEVX Telegram bot link with token address and your referral code
       mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
       
@@ -474,15 +353,16 @@ function buildDexScreenerReply(dexScreenerData) {
 \`
 `;
 
+    // Add links as a separate markdown block
     let links = `
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
 `;
     if (mexcLink) {
         links += ` | [MEXC](${mexcLink})`;
     }
-    if (mevxLink) {
+        if (mevxLink) {
         links += ` | [MEVX](${mevxLink})`;
-    }
+        }
     
     reply += `\n${links}`;
 
@@ -493,7 +373,7 @@ function buildDexScreenerReply(dexScreenerData) {
   }
 }
 
-// --- Build comparison reply ---
+// --- Build comparison reply (UPDATED) ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
   try {
     const formattedPrice = fmtPrice(theoreticalPrice);
@@ -507,6 +387,7 @@ function buildCompareReply(coin1, coin2, theoreticalPrice) {
     return '`Error formatting comparison reply`';
   }
 }
+
 
 // --- Build gas price reply ---
 function buildGasReply(gasPrices, ethPrice) {
@@ -537,7 +418,7 @@ function buildGasReply(gasPrices, ethPrice) {
   }
 }
 
-// --- Send message with topic support and refresh/delete buttons ---
+// --- Send message with topic support and refresh/delete buttons (UPDATED) ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callbackData = '', options = {}) {
   if (!text || text.trim() === '') {
     console.error('❌ Refusing to send an empty message.');
@@ -598,7 +479,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
   }
 }
 
-// --- Send Photo function ---
+// --- Send Photo function (UPDATED for Refresh) ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '') {
   const baseOptions = {
     chat_id: parseInt(chatId),
@@ -653,7 +534,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
   }
 }
 
-// --- Edit message with topic support and refresh/delete buttons ---
+// --- Edit message with topic support and refresh/delete buttons (NEW) ---
 async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData) {
     const isPhoto = !!photoUrl;
     const baseOptions = {
@@ -690,14 +571,14 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
     }
 }
 
-// --- Log user queries to Firestore ---
+// --- Log user queries to Firestore (specifically for DexScreener/meme coins) ---
 async function logUserQuery(user, chatId, query, price, symbol) {
     try {
         const docRef = db.collection('queries').doc();
         await docRef.set({
             userId: user.id,
             username: user.username || user.first_name || `User${user.id}`,
-            chatId: String(chatId),
+            chatId: String(chatId), // Store chat ID to filter leaderboards
             query,
             symbol,
             priceAtQuery: price,
@@ -709,11 +590,11 @@ async function logUserQuery(user, chatId, query, price, symbol) {
     }
 }
 
-// --- Build the leaderboard reply from Firestore data ---
+// --- Build the leaderboard reply from Firestore data (UPDATED) ---
 async function buildLeaderboardReply(chatId) {
     try {
         const snapshot = await db.collection('queries')
-            .where('chatId', '==', String(chatId))
+            .where('chatId', '==', String(chatId)) // Filter by current chat ID
             .get();
 
         if (snapshot.empty) {
@@ -743,11 +624,13 @@ async function buildLeaderboardReply(chatId) {
             uniqueAddresses.add(queryAddress);
         });
         
+        // Fetch current prices for all unique queries
         const livePrices = {};
         await Promise.all(Array.from(uniqueAddresses).map(async address => {
             livePrices[address] = await getLivePriceFromDexScreener(address);
         }));
 
+        // Calculate returns
         for (const userId in queries) {
             const user = queries[userId];
             user.queries.forEach(q => {
@@ -762,8 +645,10 @@ async function buildLeaderboardReply(chatId) {
             });
         }
         
+        // Sort users by total return
         const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
 
+        // --- NEW LEADERBOARD FORMATTING ---
         const mainHeader = `*👑 Token Lord Leaderboard*`;
         const groupStats = `
 *Group Stats:*
@@ -775,6 +660,7 @@ Period: All Time
             const avgReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
             const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
             
+            // Replicate the Phanes bot format
             return `*#${rank} ${user.username}*
 \`Calls: ${user.calls}
 Hit Rate: ${hitRate}%
@@ -790,35 +676,27 @@ Return: ${avgReturn}%
     }
 }
 
-// --- Enhanced Mobile-Friendly Gemini Reply Function ---
+// --- Function to get a reply from Google's Generative AI ---
 async function getGeminiReply(prompt) {
     try {
-        // Create dynamic prompt based on question nature
-        const dynamicPrompt = analyzeQuestionAndCreatePrompt(prompt);
-        
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
         const model = genAI.getGenerativeModel({
             model: "gemini-2.5-flash-lite" 
         });
             
-        const result = await model.generateContent(dynamicPrompt);
+        const result = await model.generateContent(prompt);
         const response = await result.response;
-        let text = response.text();
-        
-        // Extra safety: If response is still too long, truncate it
-        if (text.length > 450) {
-            text = text.substring(0, 400) + "...";
-        }
-        
+        const text = response.text();
         return text;
     } catch (e) {
         console.error("❌ Google Generative AI API failed:", e.message);
-        return "Sorry, I'm having trouble right now. Please try again!";
+        return "I'm sorry, I'm having trouble thinking right now. Please try again later.";
     }
 }
 
 // --- Main webhook handler ---
 export default async function handler(req, res) {
+  // Handle CORS and preflight
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -866,6 +744,7 @@ export default async function handler(req, res) {
         let photoUrl = '';
 
         if (originalCommand.startsWith('dexscreener_')) {
+          // --- DexScreener refresh handler ---
           const address = originalCommand.substring('dexscreener_'.length);
           const dexScreenerData = await getCoinFromDexScreener(address);
           if (dexScreenerData) {
@@ -928,7 +807,7 @@ export default async function handler(req, res) {
             await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
             return res.status(200).json({ ok: true });
         }
-        else {
+        else { // Standard coin lookup
           const coin = await getCoinDataWithChanges(originalCommand);
           if (coin) {
             reply = buildReply(coin, 1);
@@ -962,74 +841,42 @@ export default async function handler(req, res) {
     const text = msg.text.trim();
     const user = msg.from;
     const chatType = msg.chat.type;
+    const botUsername = "CoinPriceTrack_bot"; 
 
-    // --- Enhanced /que command handler with mobile-friendly responses ---
+    // --- Chatbot reply handling logic: Only reply to /que command ---
     if (text.startsWith('/que')) {
       const prompt = text.substring(4).trim();
 
-      // Enhanced HTML escaping function
+      // Escape HTML special characters so Telegram accepts any text
       function escapeHtml(str) {
-        if (!str || typeof str !== 'string') return 'Empty response';
         return str
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;")
-          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
-          .trim();
+          .replace(/'/g, "&#39;"); // single quotes
       }
 
       try {
         let responseText;
 
         if (prompt.length > 0) {
-          // Use enhanced Gemini function with mobile-friendly prompting
           responseText = await getGeminiReply(prompt);
         } else {
           responseText = "Please provide a query after the /que command.";
         }
 
-        // Escape HTML and handle message length with smaller chunks
         responseText = escapeHtml(responseText);
-        const messageParts = splitMessage(responseText, 600); // Smaller chunks for mobile
 
-        // Send each part as a separate message
-        for (let i = 0; i < messageParts.length; i++) {
-          const part = messageParts[i];
-          const isLastPart = i === messageParts.length - 1;
-          
-          // Add part indicator for multi-part messages (but with smaller parts, this should be rare)
-          const partIndicator = messageParts.length > 1 ? 
-            `\n\n📱 ${i + 1}/${messageParts.length}` : '';
-          
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: chatId,
-            text: part + partIndicator,
-            reply_to_message_id: isLastPart ? msg.message_id : undefined,
-            parse_mode: "HTML"
-          });
-
-          // Small delay between messages to maintain order
-          if (i < messageParts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-        }
-
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          chat_id: chatId,
+          text: responseText,
+          reply_to_message_id: msg.message_id,
+          parse_mode: "HTML"  // safe for all content
+        });
       } catch (err) {
         console.error("Telegram API error:", err.response?.data || err.message);
-        
-        // Fallback error message
-        try {
-          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: chatId,
-            text: "Sorry, I'm having trouble right now. Please try again!",
-            reply_to_message_id: msg.message_id,
-            parse_mode: "HTML"
-          });
-        } catch (fallbackErr) {
-          console.error("Fallback message also failed:", fallbackErr);
-        }
+        // Always return 200 OK so Telegram stops retrying
       }
 
       return res.status(200).json({ ok: true });
@@ -1130,7 +977,7 @@ export default async function handler(req, res) {
       }  
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
+          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n/compare eth btc - Compare market caps\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
       }  
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
@@ -1156,10 +1003,10 @@ export default async function handler(req, res) {
         let amount, symbol;
         if (m[1] && m[2]) {
           amount = parseFloat(m[1]);
-          symbol = m[10];
-        } else if (m[11] && m[12]) {
-          symbol = m[11];
-          amount = parseFloat(m[12]);
+          symbol = m[2];
+        } else if (m[3] && m[4]) {
+          symbol = m[3];
+          amount = parseFloat(m[4]);
         }
         if (amount && symbol) {
           const coin = await getCoinDataWithChanges(symbol);
