@@ -15,7 +15,7 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// --- Dynamic Prompt Engineering Functions ---
+// --- Mobile-Friendly Prompt Engineering Functions ---
 function analyzeQuestionAndCreatePrompt(userInput) {
   const input = userInput.toLowerCase();
   let systemPrompt = "";
@@ -24,121 +24,117 @@ function analyzeQuestionAndCreatePrompt(userInput) {
   if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
     systemPrompt = `
 You are a witty roast comedian with a playful attitude.
-- Start with a clever roast that's funny but not mean-spirited
-- Use humor and sarcasm but keep it light-hearted
-- Include 2-3 funny observations or jokes
-- Keep it playful, not actually hurtful
-- End with something like "But hey, we've all been there!" or "Just kidding, you got this!"`;
+- Give ONE funny roast (1-2 sentences max)
+- Keep it playful, not mean
+- End with "Just kidding!" or similar
+- Total: 2-3 sentences, under 300 characters`;
     
   } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') || 
              input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') || 
              input.includes('crush') || input.includes('tinder') || input.includes('relationship advice') ||
              input.includes('awkward') || input.includes('embarrassing')) {
     systemPrompt = `
-You are a fun, witty friend giving advice with humor.
-- Start with a playful observation about the situation
-- Mix genuine advice with funny commentary
-- Include relatable jokes or scenarios
-- Use phrases like "Listen buddy..." or "Here's the tea..."
-- Add some gentle teasing but stay supportive
-- End with encouragement wrapped in humor`;
+You are a fun friend giving dating advice with humor.
+- Start with ONE funny observation
+- Give ONE practical tip
+- End with encouragement
+- Total: 3 sentences max, under 350 characters`;
     
   } else if (input.includes('help me get') || input.includes('how to impress') || input.includes('what should i say') ||
              input.includes('pick up line') || input.includes('first date') || input.includes('asking out')) {
     systemPrompt = `
-You are a wingman/wingwoman with a sense of humor.
-- Start with "Alright, let's get you sorted..."
-- Give actually useful advice but with funny delivery
-- Include what NOT to do with humorous examples
-- Add confidence-boosting humor
-- Mention common mistakes in a funny way
-- End with motivational humor like "Now go get 'em, tiger!"`;
+You are a confident wingman giving quick advice.
+- Give ONE key tip immediately
+- Mention ONE thing to avoid
+- End with motivation
+- Total: 3 sentences max, under 350 characters`;
     
   } else if (input.includes('how to') || input.includes('how do i') || input.includes('how can i')) {
     systemPrompt = `
-You are a step-by-step instructor. The user wants to learn how to do something.
-- Start with "Here's how to ${userInput.replace(/how to |how do i |how can i /i, '')}:"
-- Provide numbered steps (1. 2. 3.)
-- Keep each step simple and actionable
-- Include tips or warnings if relevant
-- End with: "Need help with any specific step?"`;
+Give concise step-by-step instructions:
+- List 3 simple steps maximum  
+- One sentence per step
+- Be direct and actionable
+- Total: under 400 characters`;
     
   } else if (input.includes('what is') || input.includes('what are') || input.includes('define')) {
     systemPrompt = `
-You are an encyclopedia explaining concepts clearly.
-- Start with a simple 1-sentence definition
-- Follow with "In simpler terms:" and use an analogy
-- Provide a real-world example
-- Mention why it's important or useful
-- End with: "Want to know more about any specific aspect?"`;
+Explain concepts simply:
+- One clear definition sentence
+- One example or analogy
+- Why it matters (optional)
+- Total: 2-3 sentences, under 300 characters`;
     
   } else if (input.includes('why') || input.includes('reason')) {
     systemPrompt = `
-You are explaining the reasoning behind something.
-- Start with the main reason in one sentence
-- List 2-3 key factors that contribute
-- Use "Think of it like..." with a relatable comparison
-- Connect it to something the user might experience
-- End with: "Curious about any of these factors specifically?"`;
+Explain reasoning briefly:
+- Start with main reason
+- Give 1-2 supporting points
+- Keep it simple
+- Total: 2-3 sentences, under 350 characters`;
     
   } else if (input.includes('vs') || input.includes('versus') || input.includes('compare') || input.includes('difference')) {
     systemPrompt = `
-You are making a balanced comparison.
-- Start with "Here's the key difference between..."
-- Create 2-3 comparison points in format "A does X, while B does Y"
-- Mention when to choose one over the other
-- Be neutral and objective
-- End with: "Which aspect of the comparison interests you most?"`;
+Make a quick comparison:
+- Key difference in one sentence
+- When to choose each (brief)
+- Total: 2-3 sentences max, under 350 characters`;
     
   } else if (input.includes('best') || input.includes('recommend') || input.includes('suggest') || input.includes('should i')) {
     systemPrompt = `
-You are a trusted advisor giving recommendations.
-- Start with your top recommendation and why
-- Mention 1-2 alternatives with brief pros/cons
-- Consider different user situations
-- Be practical and actionable
-- End with: "What's your specific situation or preference?"`;
+Give concise recommendations:
+- Top recommendation with reason
+- Brief alternative (optional)
+- Total: 2-3 sentences, under 300 characters`;
     
   } else if (input.includes('problem') || input.includes('error') || input.includes('fix') || input.includes('solve') || input.includes('troubleshoot')) {
     systemPrompt = `
-You are a problem-solving expert.
-- Start with the most common cause/solution
-- Provide 2-3 troubleshooting steps to try
-- Use format "Try this first: [step]"
-- Mention when to seek additional help
-- End with: "Did any of these steps work, or are you seeing something different?"`;
+Provide quick troubleshooting:
+- Most likely solution first
+- One backup option
+- Total: 2-3 sentences, under 350 characters`;
     
   } else {
     systemPrompt = `
-You are a knowledgeable and friendly assistant.
-- Analyze what the user is really asking
-- Provide the most helpful direct answer
-- Include relevant context or background
-- Make it practical and actionable
-- End with a relevant follow-up question`;
+Be a helpful, concise assistant:
+- Answer directly and clearly
+- Keep it brief and useful
+- Total: 2-3 sentences max, under 300 characters`;
   }
   
   systemPrompt += `
 
-CRITICAL REQUIREMENTS:
-- Maximum 3500 characters total
+CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
+- Maximum 400 characters total (STRICT LIMIT)
+- Use 2-3 short sentences maximum
 - No markdown formatting (* _ \` [ ] { } etc.)
-- Use simple, conversational language
-- Structure with clear paragraphs
-- Be engaging and match the user's energy level
+- Simple, conversational language
+- Direct and to-the-point
+- If you can't fit everything, prioritize most important info
 
 User's question: ${userInput}`;
 
   return systemPrompt;
 }
 
-function splitMessage(text, maxLength = 4000) {
+// Enhanced message splitting for mobile readability
+function splitMessage(text, maxLength = 600) {
   const parts = [];
   while (text.length > maxLength) {
+    // Try to break at natural points
     let idx = text.lastIndexOf('\n', maxLength);
     if (idx === -1) {
-      idx = text.lastIndexOf(' ', maxLength);
-      if (idx === -1) idx = maxLength;
+      idx = text.lastIndexOf('.', maxLength);
+      if (idx === -1) {
+        idx = text.lastIndexOf('!', maxLength);
+        if (idx === -1) {
+          idx = text.lastIndexOf('?', maxLength);
+          if (idx === -1) {
+            idx = text.lastIndexOf(' ', maxLength);
+            if (idx === -1) idx = maxLength;
+          }
+        }
+      }
     }
     parts.push(text.substring(0, idx).trim());
     text = text.substring(idx).trim();
@@ -794,7 +790,7 @@ Return: ${avgReturn}%
     }
 }
 
-// --- Enhanced Gemini Reply Function ---
+// --- Enhanced Mobile-Friendly Gemini Reply Function ---
 async function getGeminiReply(prompt) {
     try {
         // Create dynamic prompt based on question nature
@@ -807,11 +803,17 @@ async function getGeminiReply(prompt) {
             
         const result = await model.generateContent(dynamicPrompt);
         const response = await result.response;
-        const text = response.text();
+        let text = response.text();
+        
+        // Extra safety: If response is still too long, truncate it
+        if (text.length > 450) {
+            text = text.substring(0, 400) + "...";
+        }
+        
         return text;
     } catch (e) {
         console.error("❌ Google Generative AI API failed:", e.message);
-        return "I'm sorry, I'm having trouble thinking right now. Please try again later.";
+        return "Sorry, I'm having trouble right now. Please try again!";
     }
 }
 
@@ -961,7 +963,7 @@ export default async function handler(req, res) {
     const user = msg.from;
     const chatType = msg.chat.type;
 
-    // --- Enhanced /que command handler ---
+    // --- Enhanced /que command handler with mobile-friendly responses ---
     if (text.startsWith('/que')) {
       const prompt = text.substring(4).trim();
 
@@ -982,24 +984,24 @@ export default async function handler(req, res) {
         let responseText;
 
         if (prompt.length > 0) {
-          // Use enhanced Gemini function with dynamic prompting
+          // Use enhanced Gemini function with mobile-friendly prompting
           responseText = await getGeminiReply(prompt);
         } else {
           responseText = "Please provide a query after the /que command.";
         }
 
-        // Escape HTML and handle message length
+        // Escape HTML and handle message length with smaller chunks
         responseText = escapeHtml(responseText);
-        const messageParts = splitMessage(responseText);
+        const messageParts = splitMessage(responseText, 600); // Smaller chunks for mobile
 
         // Send each part as a separate message
         for (let i = 0; i < messageParts.length; i++) {
           const part = messageParts[i];
           const isLastPart = i === messageParts.length - 1;
           
-          // Add part indicator for multi-part messages
+          // Add part indicator for multi-part messages (but with smaller parts, this should be rare)
           const partIndicator = messageParts.length > 1 ? 
-            `\n\n📄 Part ${i + 1}/${messageParts.length}` : '';
+            `\n\n📱 ${i + 1}/${messageParts.length}` : '';
           
           await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: chatId,
@@ -1021,7 +1023,7 @@ export default async function handler(req, res) {
         try {
           await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: chatId,
-            text: "Sorry, I encountered an issue processing your request. Please try again!",
+            text: "Sorry, I'm having trouble right now. Please try again!",
             reply_to_message_id: msg.message_id,
             parse_mode: "HTML"
           });
@@ -1154,10 +1156,10 @@ export default async function handler(req, res) {
         let amount, symbol;
         if (m[1] && m[2]) {
           amount = parseFloat(m[1]);
-          symbol = m[2];
-        } else if (m[3] && m[4]) {
-          symbol = m[3];
-          amount = parseFloat(m[4]);
+          symbol = m[10];
+        } else if (m[11] && m[12]) {
+          symbol = m[11];
+          amount = parseFloat(m[12]);
         }
         if (amount && symbol) {
           const coin = await getCoinDataWithChanges(symbol);
