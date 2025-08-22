@@ -846,26 +846,43 @@ export default async function handler(req, res) {
 
     // --- Chatbot reply handling logic: Only reply to /que command ---
     if (text.startsWith('/que')) {
-        const prompt = text.substring(4).trim();
-        if (prompt.length > 0) {
-            const responseText = await getGeminiReply(prompt);
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                chat_id: chatId,
-                text: responseText,
-                reply_to_message_id: msg.message_id,
-                parse_mode: "HTML"
-            });
+  const prompt = text.substring(4).trim();
+
+  // Escape HTML special characters so Telegram accepts any text
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;"); // single quotes
+  }
+
+  try {
+    let responseText;
+
+    if (prompt.length > 0) {
+      responseText = await getGeminiReply(prompt);
     } else {
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                chat_id: chatId,
-                text: '`Please provide a query after the /que command.`',
-                reply_to_message_id: msg.message_id,
-                parse_mode: "HTML"
-            });
-        }
-        return res.status(200).json({ ok: true });
+      responseText = "Please provide a query after the /que command.";
     }
 
+    responseText = escapeHtml(responseText);
+
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: responseText,
+      reply_to_message_id: msg.message_id,
+      parse_mode: "HTML"  // safe for all content
+    });
+  } catch (err) {
+    console.error("Telegram API error:", err.response?.data || err.message);
+    // Always return 200 OK so Telegram stops retrying
+  }
+
+  return res.status(200).json({ ok: true });
+    }
+      
     // --- Original message filtering logic ---
     const isCommand = text.startsWith('/');
     const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
