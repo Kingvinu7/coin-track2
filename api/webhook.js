@@ -854,8 +854,7 @@ export default async function handler(req, res) {
                 text: responseText,
                 reply_to_message_id: msg.message_id
             });
-
-            } catch (err) {
+           } catch (err) {
   console.error("Telegram API error:", err.response?.data || err.message);
     }
         } else {
