@@ -15,6 +15,137 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+// --- Dynamic Prompt Engineering Functions ---
+function analyzeQuestionAndCreatePrompt(userInput) {
+  const input = userInput.toLowerCase();
+  let systemPrompt = "";
+  
+  // Detect FUN/CASUAL/ROAST questions first
+  if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
+    systemPrompt = `
+You are a witty roast comedian with a playful attitude.
+- Start with a clever roast that's funny but not mean-spirited
+- Use humor and sarcasm but keep it light-hearted
+- Include 2-3 funny observations or jokes
+- Keep it playful, not actually hurtful
+- End with something like "But hey, we've all been there!" or "Just kidding, you got this!"`;
+    
+  } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') || 
+             input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') || 
+             input.includes('crush') || input.includes('tinder') || input.includes('relationship advice') ||
+             input.includes('awkward') || input.includes('embarrassing')) {
+    systemPrompt = `
+You are a fun, witty friend giving advice with humor.
+- Start with a playful observation about the situation
+- Mix genuine advice with funny commentary
+- Include relatable jokes or scenarios
+- Use phrases like "Listen buddy..." or "Here's the tea..."
+- Add some gentle teasing but stay supportive
+- End with encouragement wrapped in humor`;
+    
+  } else if (input.includes('help me get') || input.includes('how to impress') || input.includes('what should i say') ||
+             input.includes('pick up line') || input.includes('first date') || input.includes('asking out')) {
+    systemPrompt = `
+You are a wingman/wingwoman with a sense of humor.
+- Start with "Alright, let's get you sorted..."
+- Give actually useful advice but with funny delivery
+- Include what NOT to do with humorous examples
+- Add confidence-boosting humor
+- Mention common mistakes in a funny way
+- End with motivational humor like "Now go get 'em, tiger!"`;
+    
+  } else if (input.includes('how to') || input.includes('how do i') || input.includes('how can i')) {
+    systemPrompt = `
+You are a step-by-step instructor. The user wants to learn how to do something.
+- Start with "Here's how to ${userInput.replace(/how to |how do i |how can i /i, '')}:"
+- Provide numbered steps (1. 2. 3.)
+- Keep each step simple and actionable
+- Include tips or warnings if relevant
+- End with: "Need help with any specific step?"`;
+    
+  } else if (input.includes('what is') || input.includes('what are') || input.includes('define')) {
+    systemPrompt = `
+You are an encyclopedia explaining concepts clearly.
+- Start with a simple 1-sentence definition
+- Follow with "In simpler terms:" and use an analogy
+- Provide a real-world example
+- Mention why it's important or useful
+- End with: "Want to know more about any specific aspect?"`;
+    
+  } else if (input.includes('why') || input.includes('reason')) {
+    systemPrompt = `
+You are explaining the reasoning behind something.
+- Start with the main reason in one sentence
+- List 2-3 key factors that contribute
+- Use "Think of it like..." with a relatable comparison
+- Connect it to something the user might experience
+- End with: "Curious about any of these factors specifically?"`;
+    
+  } else if (input.includes('vs') || input.includes('versus') || input.includes('compare') || input.includes('difference')) {
+    systemPrompt = `
+You are making a balanced comparison.
+- Start with "Here's the key difference between..."
+- Create 2-3 comparison points in format "A does X, while B does Y"
+- Mention when to choose one over the other
+- Be neutral and objective
+- End with: "Which aspect of the comparison interests you most?"`;
+    
+  } else if (input.includes('best') || input.includes('recommend') || input.includes('suggest') || input.includes('should i')) {
+    systemPrompt = `
+You are a trusted advisor giving recommendations.
+- Start with your top recommendation and why
+- Mention 1-2 alternatives with brief pros/cons
+- Consider different user situations
+- Be practical and actionable
+- End with: "What's your specific situation or preference?"`;
+    
+  } else if (input.includes('problem') || input.includes('error') || input.includes('fix') || input.includes('solve') || input.includes('troubleshoot')) {
+    systemPrompt = `
+You are a problem-solving expert.
+- Start with the most common cause/solution
+- Provide 2-3 troubleshooting steps to try
+- Use format "Try this first: [step]"
+- Mention when to seek additional help
+- End with: "Did any of these steps work, or are you seeing something different?"`;
+    
+  } else {
+    systemPrompt = `
+You are a knowledgeable and friendly assistant.
+- Analyze what the user is really asking
+- Provide the most helpful direct answer
+- Include relevant context or background
+- Make it practical and actionable
+- End with a relevant follow-up question`;
+  }
+  
+  systemPrompt += `
+
+CRITICAL REQUIREMENTS:
+- Maximum 3500 characters total
+- No markdown formatting (* _ \` [ ] { } etc.)
+- Use simple, conversational language
+- Structure with clear paragraphs
+- Be engaging and match the user's energy level
+
+User's question: ${userInput}`;
+
+  return systemPrompt;
+}
+
+function splitMessage(text, maxLength = 4000) {
+  const parts = [];
+  while (text.length > maxLength) {
+    let idx = text.lastIndexOf('\n', maxLength);
+    if (idx === -1) {
+      idx = text.lastIndexOf(' ', maxLength);
+      if (idx === -1) idx = maxLength;
+    }
+    parts.push(text.substring(0, idx).trim());
+    text = text.substring(idx).trim();
+  }
+  if (text.length > 0) parts.push(text);
+  return parts;
+}
 
 // --- Helpers ---
 function fmtBig(n) {
@@ -69,7 +200,7 @@ const priority = {
   vet: "vechain",
 };
 
-// --- Get all coin data in a single API call (UPDATED for INR) ---
+// --- Get all coin data in a single API call ---
 async function getCoinDataWithChanges(symbol) {
   const s = symbol.toLowerCase();
   let coinId = priority[s];
@@ -277,7 +408,6 @@ function buildReply(coin, amount) {
     const priceUSD = coin.current_price ?? 0;
     const totalUSD = priceUSD * (amount ?? 1);
     
-    // Values are now top-level properties
     const mc = coin.market_cap ?? null;
     const ath = coin.ath ?? null;
     const fdv = (coin.fully_diluted_valuation === 0 || coin.fully_diluted_valuation == null) ? "N/A" : fmtBig(coin.fully_diluted_valuation);
@@ -317,7 +447,6 @@ function buildDexScreenerReply(dexScreenerData) {
     const formattedExchange = pair.dexId.toUpperCase();
     const formattedPrice = pair.priceUsd ? fmtPrice(parseFloat(pair.priceUsd)) : 'N/A';
     
-    // Check if priceChange exists before trying to format
     const change1h = pair.priceChange?.h1;
     const formattedChange1h = change1h ? fmtChange(change1h) : 'N/A';
 
@@ -325,17 +454,13 @@ function buildDexScreenerReply(dexScreenerData) {
     const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
     const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
 
-    // Construct the links
-    const dexScreenerLink = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
-    
     let mexcLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
       mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
     }
 
-let mevxLink = null;
+    let mevxLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
-      // MEVX Telegram bot link with token address and your referral code
       mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
       
@@ -353,16 +478,15 @@ let mevxLink = null;
 \`
 `;
 
-    // Add links as a separate markdown block
     let links = `
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
 `;
     if (mexcLink) {
         links += ` | [MEXC](${mexcLink})`;
     }
-        if (mevxLink) {
+    if (mevxLink) {
         links += ` | [MEVX](${mevxLink})`;
-        }
+    }
     
     reply += `\n${links}`;
 
@@ -373,7 +497,7 @@ let mevxLink = null;
   }
 }
 
-// --- Build comparison reply (UPDATED) ---
+// --- Build comparison reply ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
   try {
     const formattedPrice = fmtPrice(theoreticalPrice);
@@ -387,7 +511,6 @@ function buildCompareReply(coin1, coin2, theoreticalPrice) {
     return '`Error formatting comparison reply`';
   }
 }
-
 
 // --- Build gas price reply ---
 function buildGasReply(gasPrices, ethPrice) {
@@ -418,7 +541,7 @@ function buildGasReply(gasPrices, ethPrice) {
   }
 }
 
-// --- Send message with topic support and refresh/delete buttons (UPDATED) ---
+// --- Send message with topic support and refresh/delete buttons ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callbackData = '', options = {}) {
   if (!text || text.trim() === '') {
     console.error('❌ Refusing to send an empty message.');
@@ -479,7 +602,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
   }
 }
 
-// --- Send Photo function (UPDATED for Refresh) ---
+// --- Send Photo function ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '') {
   const baseOptions = {
     chat_id: parseInt(chatId),
@@ -534,7 +657,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
   }
 }
 
-// --- Edit message with topic support and refresh/delete buttons (NEW) ---
+// --- Edit message with topic support and refresh/delete buttons ---
 async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData) {
     const isPhoto = !!photoUrl;
     const baseOptions = {
@@ -571,14 +694,14 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
     }
 }
 
-// --- Log user queries to Firestore (specifically for DexScreener/meme coins) ---
+// --- Log user queries to Firestore ---
 async function logUserQuery(user, chatId, query, price, symbol) {
     try {
         const docRef = db.collection('queries').doc();
         await docRef.set({
             userId: user.id,
             username: user.username || user.first_name || `User${user.id}`,
-            chatId: String(chatId), // Store chat ID to filter leaderboards
+            chatId: String(chatId),
             query,
             symbol,
             priceAtQuery: price,
@@ -590,11 +713,11 @@ async function logUserQuery(user, chatId, query, price, symbol) {
     }
 }
 
-// --- Build the leaderboard reply from Firestore data (UPDATED) ---
+// --- Build the leaderboard reply from Firestore data ---
 async function buildLeaderboardReply(chatId) {
     try {
         const snapshot = await db.collection('queries')
-            .where('chatId', '==', String(chatId)) // Filter by current chat ID
+            .where('chatId', '==', String(chatId))
             .get();
 
         if (snapshot.empty) {
@@ -624,13 +747,11 @@ async function buildLeaderboardReply(chatId) {
             uniqueAddresses.add(queryAddress);
         });
         
-        // Fetch current prices for all unique queries
         const livePrices = {};
         await Promise.all(Array.from(uniqueAddresses).map(async address => {
             livePrices[address] = await getLivePriceFromDexScreener(address);
         }));
 
-        // Calculate returns
         for (const userId in queries) {
             const user = queries[userId];
             user.queries.forEach(q => {
@@ -645,10 +766,8 @@ async function buildLeaderboardReply(chatId) {
             });
         }
         
-        // Sort users by total return
         const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
 
-        // --- NEW LEADERBOARD FORMATTING ---
         const mainHeader = `*👑 Token Lord Leaderboard*`;
         const groupStats = `
 *Group Stats:*
@@ -660,7 +779,6 @@ Period: All Time
             const avgReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
             const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
             
-            // Replicate the Phanes bot format
             return `*#${rank} ${user.username}*
 \`Calls: ${user.calls}
 Hit Rate: ${hitRate}%
@@ -676,15 +794,18 @@ Return: ${avgReturn}%
     }
 }
 
-// --- Function to get a reply from Google's Generative AI ---
+// --- Enhanced Gemini Reply Function ---
 async function getGeminiReply(prompt) {
     try {
+        // Create dynamic prompt based on question nature
+        const dynamicPrompt = analyzeQuestionAndCreatePrompt(prompt);
+        
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
         const model = genAI.getGenerativeModel({
             model: "gemini-2.5-flash-lite" 
         });
             
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(dynamicPrompt);
         const response = await result.response;
         const text = response.text();
         return text;
@@ -696,7 +817,6 @@ async function getGeminiReply(prompt) {
 
 // --- Main webhook handler ---
 export default async function handler(req, res) {
-  // Handle CORS and preflight
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -744,7 +864,6 @@ export default async function handler(req, res) {
         let photoUrl = '';
 
         if (originalCommand.startsWith('dexscreener_')) {
-          // --- DexScreener refresh handler ---
           const address = originalCommand.substring('dexscreener_'.length);
           const dexScreenerData = await getCoinFromDexScreener(address);
           if (dexScreenerData) {
@@ -807,7 +926,7 @@ export default async function handler(req, res) {
             await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
             return res.status(200).json({ ok: true });
         }
-        else { // Standard coin lookup
+        else {
           const coin = await getCoinDataWithChanges(originalCommand);
           if (coin) {
             reply = buildReply(coin, 1);
@@ -841,42 +960,74 @@ export default async function handler(req, res) {
     const text = msg.text.trim();
     const user = msg.from;
     const chatType = msg.chat.type;
-    const botUsername = "CoinPriceTrack_bot"; 
 
-    // --- Chatbot reply handling logic: Only reply to /que command ---
+    // --- Enhanced /que command handler ---
     if (text.startsWith('/que')) {
       const prompt = text.substring(4).trim();
 
-      // Escape HTML special characters so Telegram accepts any text
+      // Enhanced HTML escaping function
       function escapeHtml(str) {
+        if (!str || typeof str !== 'string') return 'Empty response';
         return str
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;"); // single quotes
+          .replace(/'/g, "&#39;")
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+          .trim();
       }
 
       try {
         let responseText;
 
         if (prompt.length > 0) {
+          // Use enhanced Gemini function with dynamic prompting
           responseText = await getGeminiReply(prompt);
         } else {
           responseText = "Please provide a query after the /que command.";
         }
 
+        // Escape HTML and handle message length
         responseText = escapeHtml(responseText);
+        const messageParts = splitMessage(responseText);
 
-        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          chat_id: chatId,
-          text: responseText,
-          reply_to_message_id: msg.message_id,
-          parse_mode: "HTML"  // safe for all content
-        });
+        // Send each part as a separate message
+        for (let i = 0; i < messageParts.length; i++) {
+          const part = messageParts[i];
+          const isLastPart = i === messageParts.length - 1;
+          
+          // Add part indicator for multi-part messages
+          const partIndicator = messageParts.length > 1 ? 
+            `\n\n📄 Part ${i + 1}/${messageParts.length}` : '';
+          
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: chatId,
+            text: part + partIndicator,
+            reply_to_message_id: isLastPart ? msg.message_id : undefined,
+            parse_mode: "HTML"
+          });
+
+          // Small delay between messages to maintain order
+          if (i < messageParts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
       } catch (err) {
         console.error("Telegram API error:", err.response?.data || err.message);
-        // Always return 200 OK so Telegram stops retrying
+        
+        // Fallback error message
+        try {
+          await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: chatId,
+            text: "Sorry, I encountered an issue processing your request. Please try again!",
+            reply_to_message_id: msg.message_id,
+            parse_mode: "HTML"
+          });
+        } catch (fallbackErr) {
+          console.error("Fallback message also failed:", fallbackErr);
+        }
       }
 
       return res.status(200).json({ ok: true });
@@ -977,7 +1128,7 @@ export default async function handler(req, res) {
       }  
       else if (command === 'help') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n/compare eth btc - Compare market caps\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
+          '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
       }  
       else if (command === 'test') {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
