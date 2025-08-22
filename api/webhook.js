@@ -854,6 +854,10 @@ export default async function handler(req, res) {
                 text: responseText,
                 reply_to_message_id: msg.message_id
             });
+
+            } catch (err) {
+  console.error("Telegram API error:", err.response?.data || err.message);
+    }
         } else {
             await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                 chat_id: chatId,
