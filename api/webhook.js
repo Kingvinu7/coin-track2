@@ -680,8 +680,10 @@ Return: ${avgReturn}%
 async function getGeminiReply(prompt) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-lite" });
+const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash-lite",
+    tools: [{ googleSearchRetrieval: {} }]  // Add this line for real-time updates
+});
             
         
         const result = await model.generateContent(prompt);
