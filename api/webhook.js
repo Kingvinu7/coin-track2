@@ -27,7 +27,7 @@ You are a witty roast comedian with a playful attitude.
 - Give ONE funny roast (1-2 sentences max)
 - Keep it playful, not mean
 - End with "Just kidding!" or similar
-- Total: 2-3 sentences, under 300 characters`;
+- Total: 3-4 sentences, under 300 characters`;
     
   } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') || 
              input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') || 
@@ -38,7 +38,7 @@ You are a fun friend giving dating advice with humor.
 - Start with ONE funny observation
 - Give ONE practical tip
 - End with encouragement
-- Total: 3 sentences max, under 350 characters`;
+- Total: 4 sentences max, under 350 characters`;
     
   } else if (input.includes('help me get') || input.includes('how to impress') || input.includes('what should i say') ||
              input.includes('pick up line') || input.includes('first date') || input.includes('asking out')) {
@@ -47,7 +47,7 @@ You are a confident wingman giving quick advice.
 - Give ONE key tip immediately
 - Mention ONE thing to avoid
 - End with motivation
-- Total: 3 sentences max, under 350 characters`;
+- Total: 4 sentences max, under 350 characters`;
     
   } else if (input.includes('how to') || input.includes('how do i') || input.includes('how can i')) {
     systemPrompt = `
@@ -78,35 +78,35 @@ Explain reasoning briefly:
 Make a quick comparison:
 - Key difference in one sentence
 - When to choose each (brief)
-- Total: 2-3 sentences max, under 350 characters`;
+- Total: 5,6 sentences max, under 350 characters`;
     
   } else if (input.includes('best') || input.includes('recommend') || input.includes('suggest') || input.includes('should i')) {
     systemPrompt = `
 Give concise recommendations:
 - Top recommendation with reason
 - Brief alternative (optional)
-- Total: 2-3 sentences, under 300 characters`;
+- Total: 4-5 sentences, under 300 characters`;
     
   } else if (input.includes('problem') || input.includes('error') || input.includes('fix') || input.includes('solve') || input.includes('troubleshoot')) {
     systemPrompt = `
 Provide quick troubleshooting:
 - Most likely solution first
 - One backup option
-- Total: 2-3 sentences, under 350 characters`;
+- Total: 4-5 sentences, under 350 characters`;
     
   } else {
     systemPrompt = `
 Be a helpful, concise assistant:
 - Answer directly and clearly
 - Keep it brief and useful
-- Total: 2-3 sentences max, under 300 characters`;
+- Total: 4-5 sentences max, under 300 characters`;
   }
   
   systemPrompt += `
 
 CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
 - Maximum 400 characters total (STRICT LIMIT)
-- Use 2-3 short sentences maximum
+- Use 4-5 short sentences maximum
 - No markdown formatting (* _ \` [ ] { } etc.)
 - Simple, conversational language
 - Direct and to-the-point
