@@ -1049,7 +1049,7 @@ export default async function handler(req, res) {
     }
       
     // --- Original message filtering logic ---
-    const isCommand = text.startsWith('/');
+    const isCommand = text.startsWith('.');
     const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
     const isCalculation = mathRegex.test(text);
     const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
