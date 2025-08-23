@@ -1,4 +1,4 @@
-# വില പരിശോധകൻ - The Crypto Price Bot miniapp in Farcaster 
+# വില പരിശോധകൻ - The ultimate Crypto Price Bot in telegram,
 
 വില പരിശോധകൻ (Vila Parisōdhakan), which translates to "Price Inspector" in Malayalam, is a powerful and versatile Telegram bot designed to provide real-time cryptocurrency information, price charts, and general crypto knowledge. Built using Node.js and deployed on Vercel, it leverages multiple APIs to deliver accurate and up-to-date data.
 
