@@ -1149,14 +1149,6 @@ export default async function handler(req, res) {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
           `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
       }
-      else {
-        const coin = await getCoinDataWithChanges(command);
-        if (coin) {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1), command);
-        } else {
-          await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${command.toUpperCase()}" not found\``, command);
-        }
-      }  
     } else if (isCalculation) {
         const result = evaluateExpression(text);
         if (result !== null) {
