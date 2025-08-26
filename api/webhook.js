@@ -473,22 +473,20 @@ function buildDexScreenerReply(dexScreenerData) {
       mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
       
-    let reply = `
-\`💊 ${token.name} (${token.symbol})
+let reply = 
+`💊 \`${token.name}\` (\`${token.symbol}\`)
 
-🔗 CHAIN: #${formattedChain} 
-🔄 DEX PAIR: ${formattedExchange}
+🔗 CHAIN: \`#${formattedChain}\`
+🔄 DEX PAIR: \`${formattedExchange}\`
 
 🪙 ADDRESS: 
 
-${token.address}
+\`${token.address}\`
 
-💎 USD: ${formattedPrice} (${formattedChange1h})
-✨ MARKET CAP:  $${mc}
-⚜️ VOLUME: $${vol}
-🌀 LP:  $${lp}
-\`
-`;
+💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
+✨ MARKET CAP: \`$${mc}\`
+⚜️ VOLUME: \`$${vol}\`
+🌀 LP: \`$${lp}\``;
       
 let links = `
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
