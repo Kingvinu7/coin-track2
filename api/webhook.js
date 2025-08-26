@@ -446,16 +446,19 @@ function buildReply(coin, amount) {
 }
 
 // --- Build the signature line for DexScreener responses ---
-function buildSignature(username, marketCap, priceChange1h, timestamp) {
+function buildSignature(username, marketCap, priceChange1h, timestamp, chatId, messageId) {
   const emoji = priceChange1h > 0 ? '😈' : '😡';
   const formattedMC = fmtBig(marketCap);
+  
+  const telegramLink = `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${messageId}`;
+  const usernameLink = `[@${username}](${telegramLink})`;
 
   // Corrected line to handle both Date and Firebase Timestamp objects
   const timestampDate = (typeof timestamp.toDate === 'function') ? timestamp.toDate() : timestamp;
   const timeDifference = Math.floor((new Date() - timestampDate) / 1000);
   const formattedTime = `${timeDifference}s`;
   
-  return `\n\n${emoji} \`@${username}\` @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
+  return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
 }
 
 // --- Build DexScreener price reply with monospace formatting and links ---
@@ -719,13 +722,14 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
 }
 
 // --- Log user queries to Firestore ---
-async function logUserQuery(user, chatId, query, price, symbol, marketCap) {
+async function logUserQuery(user, chatId, query, price, symbol, marketCap, messageId) {
     try {
         const docRef = db.collection('queries').doc();
         await docRef.set({
             userId: user.id,
             username: user.username || user.first_name || `User${user.id}`,
             chatId: String(chatId),
+            messageId,
             query,
             symbol,
             priceAtQuery: price,
@@ -900,11 +904,11 @@ export default async function handler(req, res) {
           if (dexScreenerData) {
               reply = buildDexScreenerReply(dexScreenerData);
 
-              // Look up original query in Firestore to get the user and timestamp
+              // Look up original query in Firestore to get the user, timestamp, and message ID
               const originalQuerySnapshot = await db.collection('queries').where('query', '==', address).orderBy('timestamp', 'desc').limit(1).get();
               if (!originalQuerySnapshot.empty) {
                 const originalQuery = originalQuerySnapshot.docs[0].data();
-                const signature = buildSignature(originalQuery.username, originalQuery.marketCap, dexScreenerData.priceChange.h1, originalQuery.timestamp);
+                const signature = buildSignature(originalQuery.username, originalQuery.marketCap, dexScreenerData.priceChange.h1, originalQuery.timestamp, originalQuery.chatId, originalQuery.messageId);
                 reply += signature;
               }
 
@@ -996,6 +1000,7 @@ export default async function handler(req, res) {
     }
 
     const chatId = msg.chat.id;
+    const messageId = msg.message_id;
     const messageThreadId = msg.message_thread_id;
     const text = msg.text.trim();
     const user = msg.from;
@@ -1092,8 +1097,9 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap);
-        const signature = buildSignature(user.username, dexScreenerData.marketCap, dexScreenerData.priceChange.h1, new Date());
+        // Log the messageId along with the other data
+        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap, messageId);
+        const signature = buildSignature(user.username, dexScreenerData.marketCap, dexScreenerData.priceChange.h1, new Date(), chatId, messageId);
         
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
 
