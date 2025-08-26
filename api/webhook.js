@@ -475,19 +475,16 @@ function buildDexScreenerReply(dexScreenerData) {
       
     let reply = `
 \`💊 ${token.name} (${token.symbol})
-├ Chain: #${formattedChain}
-├ Pair: ${formattedExchange}
-└ Address: ${formattedAddress}
-
-📊 Token Stats
-├ USD: ${formattedPrice} (${formattedChange1h})
-├ MC:  $${mc}
-├ Vol: $${vol}
-└ LP:  $${lp}
+🔗 Chain: #${formattedChain} 
+💱 Pair: ${formattedExchange}
+🪙 Address: \`\`\`${tokenAddress}\`\`\`
+💲 USD: ${formattedPrice} (${formattedChange1h})
+✨ MC:  $${mc}
+⚜️ Vol: $${vol}
+🌀 LP:  $${lp}
 \`
 `;
-
-    let links = `
+let links = `
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
 `;
     if (mexcLink) {
