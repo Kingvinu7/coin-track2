@@ -437,26 +437,74 @@ return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
 }
 }
 
-// --- Build the signature line for DexScreener responses ---
-function buildSignature(username, marketCap, priceChange1h, timestamp, chatId, messageId) {
-const emoji = priceChange1h > 0 ? '😈' : '😡';
-const formattedMC = fmtBig(marketCap);
-const telegramLink = `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${messageId}`;
-const usernameLink = `[@${username}](${telegramLink})`;
-// FIXED: Handle timestamp properly
-let timestampDate;
-if (timestamp && typeof timestamp.toDate === 'function') {
-timestampDate = timestamp.toDate();
-} else if (timestamp instanceof Date) {
-timestampDate = timestamp;
-} else if (typeof timestamp === 'number') {
-timestampDate = new Date(timestamp);
+// --- NEW: Check if address was posted before and get first post info ---
+async function getFirstPostInfo(address, chatId) {
+try {
+const snapshot = await db.collection('first_posts')
+.where('address', '==', address.toLowerCase())
+.where('chatId', '==', String(chatId))
+.limit(1)
+.get();
+  
+if (!snapshot.empty) {
+const firstPostData = snapshot.docs[0].data();
+console.log('✅ Found existing first post:', firstPostData);
+return firstPostData;
 } else {
-console.warn('⚠️ Invalid timestamp format:', timestamp);
+console.log('⚠️ No existing first post found for address:', address);
+return null;
+}
+} catch (error) {
+console.error('❌ Error checking first post:', error.message);
+return null;
+}
+}
+
+// --- NEW: Store first post information ---
+async function storeFirstPostInfo(address, chatId, username, marketCap, timestamp, messageId, symbol) {
+try {
+const docRef = db.collection('first_posts').doc();
+await docRef.set({
+address: address.toLowerCase(),
+chatId: String(chatId),
+firstUsername: username,
+firstMarketCap: marketCap,
+firstTimestamp: timestamp,
+firstMessageId: messageId,
+symbol: symbol,
+createdAt: admin.firestore.FieldValue.serverTimestamp()
+});
+console.log('✅ Stored first post info for address:', address);
+return true;
+} catch (error) {
+console.error('❌ Error storing first post info:', error.message);
+return false;
+}
+}
+
+// --- MODIFIED: Build the signature line using FIRST POST information ---
+function buildSignature(firstPostData, currentPriceChange1h, chatId) {
+const emoji = currentPriceChange1h > 0 ? '😈' : '😡';
+const formattedMC = fmtBig(firstPostData.firstMarketCap);
+const telegramLink = `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${firstPostData.firstMessageId}`;
+const usernameLink = `[@${firstPostData.firstUsername}](${telegramLink})`;
+  
+// Handle timestamp properly
+let timestampDate;
+if (firstPostData.firstTimestamp && typeof firstPostData.firstTimestamp.toDate === 'function') {
+timestampDate = firstPostData.firstTimestamp.toDate();
+} else if (firstPostData.firstTimestamp instanceof Date) {
+timestampDate = firstPostData.firstTimestamp;
+} else if (typeof firstPostData.firstTimestamp === 'number') {
+timestampDate = new Date(firstPostData.firstTimestamp);
+} else {
+console.warn('⚠️ Invalid first post timestamp format:', firstPostData.firstTimestamp);
 timestampDate = new Date();
 }
+  
 const timeDifference = Math.floor((new Date() - timestampDate) / 1000);
 const formattedTime = formatTimeDuration(timeDifference);
+  
 return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
 }
 
@@ -863,23 +911,10 @@ const address = originalCommand.substring('dexscreener_'.length);
 const dexScreenerData = await getCoinFromDexScreener(address);
 if (dexScreenerData) {
 reply = buildDexScreenerReply(dexScreenerData);
-// FIXED: Look up original query in Firestore to get the ORIGINAL timestamp
-const originalQuerySnapshot = await db.collection('queries')
-.where('query', '==', address)
-.orderBy('timestamp', 'desc')
-.limit(1)
-.get();
-if (!originalQuerySnapshot.empty) {
-const originalQuery = originalQuerySnapshot.docs[0].data();
-// FIXED: Use the ORIGINAL timestamp from the database, not current time
-const signature = buildSignature(
-originalQuery.username, 
-originalQuery.marketCap || dexScreenerData.marketCap, 
-dexScreenerData.priceChange?.h1 || 0, 
-originalQuery.timestamp, // This is the original timestamp
-originalQuery.chatId, 
-originalQuery.messageId
-);
+// Get first post information for signature
+const firstPostInfo = await getFirstPostInfo(address, chatId);
+if (firstPostInfo) {
+const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
 reply += signature;
 }
 } else {
@@ -1039,16 +1074,52 @@ const isAddress = (text.length === 42 || text.length === 32 || text.length === 4
 if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
 return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
 }
+// --- MODIFIED: Address handling with first post tracking ---
 if (isAddress) {
 const dexScreenerData = await getCoinFromDexScreener(text);
 if (dexScreenerData) {
 const reply = buildDexScreenerReply(dexScreenerData);
 const callbackData = `dexscreener_${text}`;
-// Log the messageId along with the other data
-await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap, messageId);
-// FIXED: Use current time for NEW posts (this is correct for new posts)
-const signature = buildSignature(user.username, dexScreenerData.marketCap, dexScreenerData.priceChange?.h1 || 0, new Date(), chatId, messageId);
+            
+// Check if this address was posted before in this chat
+const firstPostInfo = await getFirstPostInfo(text, chatId);
+            
+if (firstPostInfo) {
+// Address was posted before - use FIRST post information for signature
+console.log('🔄 Using existing first post info for signature');
+const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
+} else {
+// This is the FIRST time this address is posted in this chat
+console.log('🆕 First time posting this address, storing first post info');
+const username = user.username || user.first_name || `User${user.id}`;
+const currentTimestamp = admin.firestore.FieldValue.serverTimestamp();
+                
+// Store first post information
+await storeFirstPostInfo(
+text, 
+chatId, 
+username, 
+dexScreenerData.marketCap, 
+currentTimestamp, 
+messageId, 
+dexScreenerData.baseToken.symbol
+);
+                
+// Create signature with current user as the first poster
+const firstPostData = {
+firstUsername: username,
+firstMarketCap: dexScreenerData.marketCap,
+firstTimestamp: new Date(), // Use current time for new posts
+firstMessageId: messageId
+};
+                
+const signature = buildSignature(firstPostData, dexScreenerData.priceChange?.h1 || 0, chatId);
+await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
+}
+            
+// Always log to queries collection for leaderboard
+await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap, messageId);
 } else {
 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
 }
