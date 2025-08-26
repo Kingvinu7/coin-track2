@@ -505,7 +505,7 @@ timestampDate = new Date();
 const timeDifference = Math.floor((new Date() - timestampDate) / 1000);
 const formattedTime = formatTimeDuration(timeDifference);
   
-return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
+return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ ${formattedTime} ]`;
 }
 
 // --- Build DexScreener price reply with monospace formatting and links ---
