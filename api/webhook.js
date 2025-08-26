@@ -473,8 +473,27 @@ function buildDexScreenerReply(dexScreenerData) {
       mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
       
-let reply = 
-`💊 \`${token.name}\` (\`${token.symbol}\`)
+// Function to format numbers into K, M, B notation
+function formatNumber(num) {
+  if (!num || isNaN(num)) return '0';
+  
+  const number = parseFloat(num);
+  
+  if (number >= 1000000000) {
+    return (number / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+  }
+  if (number >= 1000000) {
+    return (number / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  }
+  if (number >= 1000) {
+    return (number / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  }
+  
+  return number.toString();
+}
+
+// Usage in your reply function
+let reply = `💊 \`${token.name}\` (\`${token.symbol}\`)
 
 🔗 CHAIN: \`#${formattedChain}\`
 🔄 DEX PAIR: \`${formattedExchange}\`
@@ -484,28 +503,16 @@ let reply =
 \`${token.address}\`
 
 💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
-✨ MARKET CAP: \`$${mc}\`
-⚜️ VOLUME: \`$${vol}\`
-🌀 LP: \`$${lp}\``;
-      
-let links = `
-[DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
-`;
-    if (mexcLink) {
-        links += ` | [MEXC](${mexcLink})`;
-    }
-    if (mevxLink) {
-        links += ` | [MEVX](${mevxLink})`;
-    }
-    
-    reply += `${links}`;
+✨ MARKET CAP: \`$${formatNumber(mc)}\`
+⚜️ VOLUME: \`$${formatNumber(vol)}\`
+🌀 LP: \`$${formatNumber(lp)}\``;
 
-    return reply.trim();
-  } catch (error) {
-    console.error('❌ buildDexScreenerReply error:', error.message);
-    return '`Error formatting DexScreener reply.`';
-  }
-}
+// Examples of what it outputs:
+// formatNumber(1500) → "1.5K"
+// formatNumber(2500000) → "2.5M"  
+// formatNumber(1200000000) → "1.2B"
+// formatNumber(1000) → "1K"
+// formatNumber(999) → "999"
 
 // --- Build comparison reply ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
