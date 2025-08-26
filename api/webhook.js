@@ -446,6 +446,16 @@ function buildReply(coin, amount) {
 }
 
 // --- Build DexScreener price reply with monospace formatting and links ---
+// ADD THIS FUNCTION at the top of your file (OUTSIDE of buildDexScreenerReply):
+function formatNumber(num) {
+  if (!num || isNaN(num)) return '0';
+  const number = parseFloat(num);
+  if (number >= 1000000000) return (number / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (number >= 1000000) return (number / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (number >= 1000) return (number / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return number.toString();
+}
+
 function buildDexScreenerReply(dexScreenerData) {
   try {
     const token = dexScreenerData.baseToken;
@@ -472,21 +482,9 @@ function buildDexScreenerReply(dexScreenerData) {
     if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
       mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
     }
-      
-// Function to format numbers into K, M, B notation
-// ADD THIS FUNCTION at the top of your file:
-function formatNumber(num) {
-  if (!num || isNaN(num)) return '0';
-  const number = parseFloat(num);
-  if (number >= 1000000000) return (number / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
-  if (number >= 1000000) return (number / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (number >= 1000) return (number / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  return number.toString();
-}
 
-// YOUR COMPLETE FUNCTION:
-try {
-  let reply = `💊 \`${token.name}\` (\`${token.symbol}\`)
+    let reply = 
+`💊 \`${token.name}\` (\`${token.symbol}\`)
 
 🔗 CHAIN: \`#${formattedChain}\`
 🔄 DEX PAIR: \`${formattedExchange}\`
@@ -499,25 +497,25 @@ try {
 ✨ MARKET CAP: \`$${formatNumber(mc)}\`
 ⚜️ VOLUME: \`$${formatNumber(vol)}\`
 🌀 LP: \`$${formatNumber(lp)}\``;
-      
-  let links = `
+          
+    let links = `
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
 `;
-    if (mexcLink) {
-        links += ` | [MEXC](${mexcLink})`;
-    }
-    if (mevxLink) {
-        links += ` | [MEVX](${mevxLink})`;
-    }
-    
-    reply += `${links}`;
+      if (mexcLink) {
+          links += ` | [MEXC](${mexcLink})`;
+      }
+      if (mevxLink) {
+          links += ` | [MEVX](${mevxLink})`;
+      }
+      
+      reply += `${links}`;
 
-    return reply.trim();
-  } catch (error) {
-    console.error('❌ buildDexScreenerReply error:', error.message);
-    return '`Error formatting DexScreener reply.`';
-  }
-  }
+      return reply.trim();
+    } catch (error) {
+      console.error('❌ buildDexScreenerReply error:', error.message);
+      return '`Error formatting DexScreener reply.`';
+    }
+}
     
 // --- Build comparison reply ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
