@@ -459,16 +459,6 @@ function buildSignature(username, marketCap, priceChange1h, timestamp) {
 }
 
 // --- Build DexScreener price reply with monospace formatting and links ---
-// ADD THIS FUNCTION at the top of your file (OUTSIDE of buildDexScreenerReply):
-function formatNumber(num) {
-  if (!num || isNaN(num)) return '0';
-  const number = parseFloat(num);
-  if (number >= 1000000000) return (number / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
-  if (number >= 1000000) return (number / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (number >= 1000) return (number / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  return number.toString();
-}
-
 function buildDexScreenerReply(dexScreenerData) {
   try {
     const token = dexScreenerData.baseToken;
@@ -482,9 +472,10 @@ function buildDexScreenerReply(dexScreenerData) {
     const change1h = pair.priceChange?.h1;
     const formattedChange1h = change1h ? fmtChange(change1h) : 'N/A';
 
-    const mc = pair.marketCap ? (pair.marketCap) : 'N/A';
-    const vol = pair.volume?.h24 ? (pair.volume.h24) : 'N/A';
-    const lp = pair.liquidity?.usd ? (pair.liquidity.usd) : 'N/A';
+    // Use fmtBig to format marketCap, volume, and liquidity
+    const mc = pair.marketCap ? fmtBig(pair.marketCap) : 'N/A';
+    const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
+    const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
 
     let mexcLink = null;
     if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
