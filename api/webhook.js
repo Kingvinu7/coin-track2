@@ -445,6 +445,16 @@ function buildReply(coin, amount) {
   }
 }
 
+// --- Build the signature line for DexScreener responses ---
+function buildSignature(username, marketCap, priceChange1h, timestamp) {
+  const emoji = priceChange1h > 0 ? '😈' : '😡';
+  const formattedMC = fmtBig(marketCap);
+  const timeDifference = Math.floor((new Date() - timestamp.toDate()) / 1000);
+  const formattedTime = `${timeDifference}s`;
+  
+  return `\n\n${emoji} \`@${username}\` @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
+}
+
 // --- Build DexScreener price reply with monospace formatting and links ---
 // ADD THIS FUNCTION at the top of your file (OUTSIDE of buildDexScreenerReply):
 function formatNumber(num) {
@@ -715,7 +725,7 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
 }
 
 // --- Log user queries to Firestore ---
-async function logUserQuery(user, chatId, query, price, symbol) {
+async function logUserQuery(user, chatId, query, price, symbol, marketCap) {
     try {
         const docRef = db.collection('queries').doc();
         await docRef.set({
@@ -725,6 +735,7 @@ async function logUserQuery(user, chatId, query, price, symbol) {
             query,
             symbol,
             priceAtQuery: price,
+            marketCap,
             timestamp: admin.firestore.FieldValue.serverTimestamp()
         });
         console.log(`✅ Logged query for user ${user.id} in chat ${chatId}: ${query}`);
@@ -894,6 +905,15 @@ export default async function handler(req, res) {
           const dexScreenerData = await getCoinFromDexScreener(address);
           if (dexScreenerData) {
               reply = buildDexScreenerReply(dexScreenerData);
+
+              // Look up original query in Firestore to get the user and timestamp
+              const originalQuerySnapshot = await db.collection('queries').where('query', '==', address).orderBy('timestamp', 'desc').limit(1).get();
+              if (!originalQuerySnapshot.empty) {
+                const originalQuery = originalQuerySnapshot.docs[0].data();
+                const signature = buildSignature(originalQuery.username, originalQuery.marketCap, dexScreenerData.priceChange.h1, originalQuery.timestamp);
+                reply += signature;
+              }
+
           } else {
               reply = '`Could not refresh DexScreener data.`';
           }
@@ -1078,9 +1098,11 @@ export default async function handler(req, res) {
         const reply = buildDexScreenerReply(dexScreenerData);
         const callbackData = `dexscreener_${text}`;
         
-        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol);
+        await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap);
+        const signature = buildSignature(user.username, dexScreenerData.marketCap, dexScreenerData.priceChange.h1, new Date());
+        
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
 
-        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, callbackData);
       } else {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
       }
