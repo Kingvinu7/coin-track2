@@ -479,7 +479,7 @@ function buildDexScreenerReply(dexScreenerData) {
 🔗 CHAIN: #${formattedChain} 
 🔄 DEX PAIR: ${formattedExchange}
 
-🪙 ADDRESS: `${token.address}`
+🪙 ADDRESS: ${token.address}
 💎 USD: ${formattedPrice} (${formattedChange1h})
 ✨ MARKET CAP:  $${mc}
 ⚜️ VOLUME: $${vol}
