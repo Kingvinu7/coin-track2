@@ -480,6 +480,7 @@ function buildDexScreenerReply(dexScreenerData) {
 🔄 DEX PAIR: ${formattedExchange}
 
 🪙 ADDRESS: 
+
 ${token.address}
 
 💎 USD: ${formattedPrice} (${formattedChange1h})
