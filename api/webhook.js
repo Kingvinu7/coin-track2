@@ -449,7 +449,10 @@ function buildReply(coin, amount) {
 function buildSignature(username, marketCap, priceChange1h, timestamp) {
   const emoji = priceChange1h > 0 ? '😈' : '😡';
   const formattedMC = fmtBig(marketCap);
-  const timeDifference = Math.floor((new Date() - timestamp.toDate()) / 1000);
+
+  // Corrected line to handle both Date and Firebase Timestamp objects
+  const timestampDate = (typeof timestamp.toDate === 'function') ? timestamp.toDate() : timestamp;
+  const timeDifference = Math.floor((new Date() - timestampDate) / 1000);
   const formattedTime = `${timeDifference}s`;
   
   return `\n\n${emoji} \`@${username}\` @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
