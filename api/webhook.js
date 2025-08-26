@@ -475,15 +475,18 @@ function buildDexScreenerReply(dexScreenerData) {
       
     let reply = `
 \`💊 ${token.name} (${token.symbol})
-🔗 Chain: #${formattedChain} 
-💱 Pair: ${formattedExchange}
-🪙 Address: ${token.address}
-💲 USD: ${formattedPrice} (${formattedChange1h})
-✨ MC:  $${mc}
-⚜️ Vol: $${vol}
+
+🔗 CHAIN: #${formattedChain} 
+🔄 DEX PAIR: ${formattedExchange}
+
+🪙 ADDRESS: `${token.address}`
+💎 USD: ${formattedPrice} (${formattedChange1h})
+✨ MARKET CAP:  $${mc}
+⚜️ VOLUME: $${vol}
 🌀 LP:  $${lp}
 \`
 `;
+      
 let links = `
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
 `;
@@ -494,7 +497,7 @@ let links = `
         links += ` | [MEVX](${mevxLink})`;
     }
     
-    reply += `\n${links}`;
+    reply += `${links}`;
 
     return reply.trim();
   } catch (error) {
