@@ -477,7 +477,7 @@ function buildDexScreenerReply(dexScreenerData) {
 \`💊 ${token.name} (${token.symbol})
 🔗 Chain: #${formattedChain} 
 💱 Pair: ${formattedExchange}
-🪙 Address: \`\`\`${tokenAddress}\`\`\`
+🪙 Address: \`\`\`${token.address}\`\`\`
 💲 USD: ${formattedPrice} (${formattedChange1h})
 ✨ MC:  $${mc}
 ⚜️ Vol: $${vol}
