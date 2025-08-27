@@ -537,42 +537,17 @@ function getChartImageUrl(coinName, historicalData) {
 
 // --- NEW: Simplified and more reliable quote image URL function ---
 function generateQuoteImageUrl(text) {
-    const config = {
-        type: 'text',
-        data: {
-            datasets: [{
-                label: 'Quote',
-                data: [`“${text}”`]
-            }]
-        },
-        options: {
-            // General chart options
-            width: 512,
-            height: 256,
-            backgroundColor: 'rgba(255, 255, 255, 0)', // Transparent background
-            
-            // Styling for the text itself
-            font: {
-                family: 'Arial', // A standard, clean font
-                size: 24,       // Adjust font size for readability
-                color: '#000000'
-            },
-            padding: 20
-        }
-    };
-    
-    // Use the /chart/render endpoint to get a direct image file
-    const encodedConfig = encodeURIComponent(JSON.stringify(config));
-    const url = `https://quickchart.io/chart/render?c=${encodedConfig}`;
-    
-    return url;
+    // The QuickChart /text endpoint is specifically for rendering text as an image.
+    const encodedText = encodeURIComponent(text);
+    return `https://quickchart.io/text?text=${encodedText}&w=512&h=256&f=Arial&fs=24&c=%23000000`;
 }
-
 
 // --- NEW: Function to check if a URL returns an image ---
 async function isImageURL(url) {
     try {
-        const response = await axios.head(url, { timeout: 5000 });
+        const response = await axios.head(url, {
+            timeout: 5000
+        });
         const contentType = response.headers['content-type'];
         return contentType && contentType.startsWith('image/');
     } catch (error) {
@@ -580,7 +555,6 @@ async function isImageURL(url) {
         return false;
     }
 }
-
 
 // --- Build price reply with monospace formatting ---
 function buildReply(coin, amount) {
@@ -999,7 +973,7 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
-            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
+            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageCaption`, options);
         } else {
             let options = { ...baseOptions,
                 text: text
@@ -1007,7 +981,7 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
-            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
+            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, options);
         }
     } catch (error) {
         if (error.response?.data?.description?.includes('message is not modified')) {
@@ -1543,7 +1517,7 @@ export default async function handler(req, res) {
             const parts = text.substring(1).toLowerCase().split(' ');
             const command = parts[0].split('@')[0]; // Fix: Extract just the command name
             const symbol = parts[1];
-            
+
             // --- NEW: Handle /s command for quote stickers ---
             if (command === 's' && msg.reply_to_message) {
                 const quotedText = msg.reply_to_message.text || ' ';
@@ -1555,8 +1529,10 @@ export default async function handler(req, res) {
                 } else {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to generate the quote sticker. Please try a different message.`');
                 }
-                
-                return res.status(200).json({ ok: true });
+
+                return res.status(200).json({
+                    ok: true
+                });
             }
 
             if (command === 'leaderboard') {
