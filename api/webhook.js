@@ -253,7 +253,24 @@ return null;
 }
 }
 
-// --- Get historical data for chart ---
+// --- ENHANCED: Get OHLC historical data for candlestick charts ---
+async function getOHLCData(coinId, days) {
+try {
+const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/ohlc`, {
+params: {
+vs_currency: "usd",
+days: days,
+},
+timeout: 15000,
+});
+return response.data;
+} catch (e) {
+console.error("❌ getOHLCData failed:", e.message);
+return null;
+}
+}
+
+// --- Get historical data for chart (fallback for line charts) ---
 async function getHistoricalData(coinId) {
 try {
 const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
@@ -344,7 +361,113 @@ return null;
 }
 }
 
-// --- Generate QuickChart URL ---
+// --- ENHANCED: Generate Candlestick Chart URL ---
+function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
+try {
+if (!ohlcData || ohlcData.length === 0) {
+throw new Error('No OHLC data provided');
+}
+
+// Convert OHLC data format: [timestamp, open, high, low, close]
+const candlestickData = ohlcData.map(candle => {
+const [timestamp, open, high, low, close] = candle;
+const date = new Date(timestamp);
+return {
+x: date.getTime(),
+o: parseFloat(open.toFixed(8)),
+h: parseFloat(high.toFixed(8)),
+l: parseFloat(low.toFixed(8)),
+c: parseFloat(close.toFixed(8))
+};
+});
+
+const chartConfig = {
+type: 'candlestick',
+data: {
+datasets: [{
+label: `${coinName} OHLC`,
+data: candlestickData,
+color: {
+up: '#00D09C',    // Green for bullish candles
+down: '#FF6B6B'   // Red for bearish candles
+},
+borderColor: {
+up: '#00A86B',
+down: '#DC143C'
+},
+wickColor: {
+up: '#00A86B',
+down: '#DC143C'
+}
+}]
+},
+options: {
+responsive: true,
+maintainAspectRatio: false,
+plugins: {
+title: {
+display: true,
+text: `${coinName} - ${timeframe} Candlestick Chart`,
+font: { size: 16, weight: 'bold' }
+},
+legend: { display: false }
+},
+scales: {
+x: {
+type: 'time',
+time: {
+unit: timeframe === '1D' ? 'hour' : 
+     timeframe === '7D' ? 'day' : 
+     timeframe === '30D' ? 'day' : 
+     timeframe === '90D' ? 'week' : 'day'
+},
+display: true,
+title: {
+display: true,
+text: 'Time'
+}
+},
+y: {
+display: true,
+title: {
+display: true,
+text: 'Price (USD)'
+},
+beginAtZero: false
+}
+}
+}
+};
+
+const compactConfig = encodeURIComponent(JSON.stringify(chartConfig));
+return `https://quickchart.io/chart?c=${compactConfig}&w=600&h=400&backgroundColor=white`;
+
+} catch (error) {
+console.error('❌ Candlestick chart URL generation failed:', error.message);
+// Fallback to error chart
+return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+type: 'bar',
+data: { 
+labels: ['Chart Error'], 
+datasets: [{ 
+data: [0], 
+backgroundColor: '#FF6B6B',
+label: 'Error generating candlestick chart'
+}] 
+},
+options: {
+plugins: {
+title: {
+display: true,
+text: `Error: Could not generate ${coinName} chart`
+}
+}
+}
+}))}&w=600&h=400&backgroundColor=white`;
+}
+}
+
+// --- Generate QuickChart URL (fallback line chart) ---
 function getChartImageUrl(coinName, historicalData) {
 try {
 const maxPoints = 30;
@@ -505,7 +628,7 @@ timestampDate = new Date();
 const timeDifference = Math.floor((new Date() - timestampDate) / 1000);
 const formattedTime = formatTimeDuration(timeDifference);
   
-return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ \`${formattedTime}\` ]`;
+return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ ${formattedTime} ]`;
 }
 
 // --- Build DexScreener price reply with monospace formatting and links ---
@@ -538,12 +661,12 @@ let reply =
 🔗 CHAIN: \`#${formattedChain}\`
 🔄 DEX PAIR: \`${formattedExchange}\`
 
+💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
+✨ MARKET CAP: \`$${mc}\`
 🪙 ADDRESS:
 
 \`${token.address}\`
 
-💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
-✨ MARKET CAP: \`$${mc}\`
 ⚜️ VOLUME: \`$${vol}\`
 🌀 LP: \`$${lp}\`
 ` ;
@@ -650,583 +773,759 @@ console.warn('⚠️ Thread not found, attempting to send to main chat.');
 try {
 const fallbackOptions = { ...baseOptions };
 delete fallbackOptions.message_thread_id;
-return await trySend(fallbackOptions);
-} catch (fallbackError) {
-console.error('❌ Fallback to main chat also failed:', fallbackError.message);
-throw fallbackError;
-}
-} else {
-throw error;
-}
-}
+                return await trySend(fallbackOptions);
+            } catch (fallbackError) {
+                console.error('❌ Fallback to main chat also failed:', fallbackError.message);
+                throw fallbackError;
+            }
+        } else {
+            throw error;
+        }
+    }
 }
 
-// --- Send Photo function ---
-async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '') {
-const baseOptions = {
-chat_id: parseInt(chatId),
-photo: photoUrl,
-caption: caption,
-parse_mode: 'Markdown',
-reply_markup: {
-inline_keyboard: [
-[{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
-]
-}
-};
-const trySend = async (opts) => {
-try {
-const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, opts, {
-timeout: 15000,
-headers: {
-'Content-Type': 'application/json',
-}
-});
-return response.data;
-} catch (error) {
-if (error.response) {
-console.error('Photo response data:', error.response.data);
-}
-throw error;
-}
-};
-try {
-let attemptOptions = { ...baseOptions };
-if (messageThreadId && parseInt(messageThreadId) > 0) {
-attemptOptions.message_thread_id = parseInt(messageThreadId);
-}
-return await trySend(attemptOptions);
-} catch (error) {
-if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
-console.warn('⚠️ Thread not found for photo, attempting to send to main chat.');
-try {
-const fallbackOptions = { ...baseOptions };
-delete fallbackOptions.message_thread_id;
-return await trySend(fallbackOptions);
-} catch (fallbackError) {
-console.error('❌ Fallback photo send also failed:', fallbackError.message);
-throw fallbackError;
-}
-} else {
-throw error;
-}
-}
+// --- Send Photo function with timeframe buttons ---
+async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '', showTimeframeButtons = false) {
+    let replyMarkup;
+    
+    if (showTimeframeButtons) {
+        // Add timeframe selection buttons for chart commands
+        replyMarkup = {
+            inline_keyboard: [
+                [
+                    { text: '1D', callback_data: `chart_1d_${callbackData}` },
+                    { text: '7D', callback_data: `chart_7d_${callbackData}` },
+                    { text: '30D', callback_data: `chart_30d_${callbackData}` },
+                    { text: '90D', callback_data: `chart_90d_${callbackData}` }
+                ],
+                [
+                    { text: '🔄 Refresh', callback_data: `refresh_chart_${callbackData}` },
+                    { text: '🗑️ Delete', callback_data: 'delete_message' }
+                ]
+            ]
+        };
+    } else {
+        replyMarkup = {
+            inline_keyboard: [
+                [{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
+            ]
+        };
+    }
+
+    const baseOptions = {
+        chat_id: parseInt(chatId),
+        photo: photoUrl,
+        caption: caption,
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup
+    };
+    
+    const trySend = async (opts) => {
+        try {
+            const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, opts, {
+                timeout: 15000,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            return response.data;
+        } catch (error) {
+            if (error.response) {
+                console.error('Photo response data:', error.response.data);
+            }
+            throw error;
+        }
+    };
+    
+    try {
+        let attemptOptions = { ...baseOptions };
+        if (messageThreadId && parseInt(messageThreadId) > 0) {
+            attemptOptions.message_thread_id = parseInt(messageThreadId);
+        }
+        return await trySend(attemptOptions);
+    } catch (error) {
+        if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
+            console.warn('⚠️ Thread not found for photo, attempting to send to main chat.');
+            try {
+                const fallbackOptions = { ...baseOptions };
+                delete fallbackOptions.message_thread_id;
+                return await trySend(fallbackOptions);
+            } catch (fallbackError) {
+                console.error('❌ Fallback photo send also failed:', fallbackError.message);
+                throw fallbackError;
+            }
+        } else {
+            throw error;
+        }
+    }
 }
 
 // --- Edit message with topic support and refresh/delete buttons ---
-async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData) {
-const isPhoto = !!photoUrl;
-const baseOptions = {
-chat_id: parseInt(chatId),
-message_id: parseInt(messageId),
-parse_mode: 'Markdown',
-reply_markup: {
-inline_keyboard: [
-[{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
-]
-}
-};
-try {
-if (isPhoto) {
-let options = { ...baseOptions, photo: photoUrl, caption: text };
-if (messageThreadId) {
-options.message_thread_id = parseInt(messageThreadId);
-}
-await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
-} else {
-let options = { ...baseOptions, text: text };
-if (messageThreadId) {
-options.message_thread_id = parseInt(messageThreadId);
-}
-await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
-}
-} catch (error) {
-if (error.response?.data?.description?.includes('message is not modified')) {
-console.log('✅ Message content is identical, no edit needed.');
-} else {
-console.error('❌ Error editing message:', error.response?.data || error.message);
-}
-}
+async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData, showTimeframeButtons = false) {
+    const isPhoto = !!photoUrl;
+    
+    let replyMarkup;
+    if (showTimeframeButtons) {
+        replyMarkup = {
+            inline_keyboard: [
+                [
+                    { text: '1D', callback_data: `chart_1d_${callbackData}` },
+                    { text: '7D', callback_data: `chart_7d_${callbackData}` },
+                    { text: '30D', callback_data: `chart_30d_${callbackData}` },
+                    { text: '90D', callback_data: `chart_90d_${callbackData}` }
+                ],
+                [
+                    { text: '🔄 Refresh', callback_data: `refresh_chart_${callbackData}` },
+                    { text: '🗑️ Delete', callback_data: 'delete_message' }
+                ]
+            ]
+        };
+    } else {
+        replyMarkup = {
+            inline_keyboard: [
+                [{ text: '🔄 Refresh', callback_data: `refresh_${callbackData}` }, { text: '🗑️ Delete', callback_data: 'delete_message' }]
+            ]
+        };
+    }
+
+    const baseOptions = {
+        chat_id: parseInt(chatId),
+        message_id: parseInt(messageId),
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup
+    };
+    
+    try {
+        if (isPhoto) {
+            let options = { ...baseOptions, photo: photoUrl, caption: text };
+            if (messageThreadId) {
+                options.message_thread_id = parseInt(messageThreadId);
+            }
+            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
+        } else {
+            let options = { ...baseOptions, text: text };
+            if (messageThreadId) {
+                options.message_thread_id = parseInt(messageThreadId);
+            }
+            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
+        }
+    } catch (error) {
+        if (error.response?.data?.description?.includes('message is not modified')) {
+            console.log('✅ Message content is identical, no edit needed.');
+        } else {
+            console.error('❌ Error editing message:', error.response?.data || error.message);
+        }
+    }
 }
 
 // --- Log user queries to Firestore ---
 async function logUserQuery(user, chatId, query, price, symbol, marketCap, messageId) {
-try {
-const docRef = db.collection('queries').doc();
-await docRef.set({
-userId: user.id,
-username: user.username || user.first_name || `User${user.id}`,
-chatId: String(chatId),
-messageId,
-query,
-symbol,
-priceAtQuery: price,
-marketCap,
-timestamp: admin.firestore.FieldValue.serverTimestamp()
-});
-console.log(`✅ Logged query for user ${user.id} in chat ${chatId}: ${query}`);
-} catch (error) {
-console.error('❌ Failed to log query to Firebase:', error.message);
-}
+    try {
+        const docRef = db.collection('queries').doc();
+        await docRef.set({
+            userId: user.id,
+            username: user.username || user.first_name || `User${user.id}`,
+            chatId: String(chatId),
+            messageId,
+            query,
+            symbol,
+            priceAtQuery: price,
+            marketCap,
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`✅ Logged query for user ${user.id} in chat ${chatId}: ${query}`);
+    } catch (error) {
+        console.error('❌ Failed to log query to Firebase:', error.message);
+    }
 }
 
 // --- Build the leaderboard reply from Firestore data ---
 async function buildLeaderboardReply(chatId) {
-try {
-const snapshot = await db.collection('queries')
-.where('chatId', '==', String(chatId))
-.get();
-if (snapshot.empty) {
-return "`Leaderboard is empty. Be the first to search for a token address!`";
-}
-const queries = {};
-const uniqueAddresses = new Set();
-snapshot.forEach(doc => {
-const data = doc.data();
-const userId = data.userId;
-const queryAddress = data.query;
-const price = data.priceAtQuery;
-const symbol = data.symbol;
-if (!queries[userId]) {
-queries[userId] = {
-username: data.username,
-calls: 0,
-totalReturn: 0,
-positiveReturns: 0,
-queries: []
-};
-}
-queries[userId].calls++;
-queries[userId].queries.push({ queryAddress, price, symbol });
-uniqueAddresses.add(queryAddress);
-});
-const livePrices = {};
-await Promise.all(Array.from(uniqueAddresses).map(async address => {
-livePrices[address] = await getLivePriceFromDexScreener(address);
-}));
-for (const userId in queries) {
-const user = queries[userId];
-user.queries.forEach(q => {
-const livePrice = livePrices[q.queryAddress];
-if (livePrice != null && q.price != null && q.price !== 0) {
-const returnPct = ((livePrice - q.price) / q.price) * 100;
-user.totalReturn += returnPct;
-if (returnPct > 0) {
-user.positiveReturns++;
-}
-}
-});
-}
-const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
-const mainHeader = `*👑 Token Lord Leaderboard*`;
-const groupStats = `
+    try {
+        const snapshot = await db.collection('queries')
+            .where('chatId', '==', String(chatId))
+            .get();
+        
+        if (snapshot.empty) {
+            return "`Leaderboard is empty. Be the first to search for a token address!`";
+        }
+        
+        const queries = {};
+        const uniqueAddresses = new Set();
+        
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const userId = data.userId;
+            const queryAddress = data.query;
+            const price = data.priceAtQuery;
+            const symbol = data.symbol;
+            
+            if (!queries[userId]) {
+                queries[userId] = {
+                    username: data.username,
+                    calls: 0,
+                    totalReturn: 0,
+                    positiveReturns: 0,
+                    queries: []
+                };
+            }
+            
+            queries[userId].calls++;
+            queries[userId].queries.push({ queryAddress, price, symbol });
+            uniqueAddresses.add(queryAddress);
+        });
+        
+        const livePrices = {};
+        await Promise.all(Array.from(uniqueAddresses).map(async address => {
+            livePrices[address] = await getLivePriceFromDexScreener(address);
+        }));
+        
+        for (const userId in queries) {
+            const user = queries[userId];
+            user.queries.forEach(q => {
+                const livePrice = livePrices[q.queryAddress];
+                if (livePrice != null && q.price != null && q.price !== 0) {
+                    const returnPct = ((livePrice - q.price) / q.price) * 100;
+                    user.totalReturn += returnPct;
+                    if (returnPct > 0) {
+                        user.positiveReturns++;
+                    }
+                }
+            });
+        }
+        
+        const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
+        
+        const mainHeader = `*👑 Token Lord Leaderboard*`;
+        const groupStats = `
 
 *Group Stats:*
 Period: All Time
 `;
-const leaderboardEntries = sortedUsers.slice(0, 10).map((user, index) => {
-const rank = index + 1;
-const avgReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
-const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
-return `*#${rank} ${user.username}*
+        
+        const leaderboardEntries = sortedUsers.slice(0, 10).map((user, index) => {
+            const rank = index + 1;
+            const avgReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
+            const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
+            
+            return `*#${rank} ${user.username}*
 \`Calls: ${user.calls}
 Hit Rate: ${hitRate}%
 Return: ${avgReturn}%
 \``;
-}).join('\n');
-return `${mainHeader}\n\n${groupStats}\n*Top Token Lords*\n${leaderboardEntries}`;
-} catch (error) {
-console.error('❌ Failed to build leaderboard:', error.message);
-return '`Failed to build leaderboard. Please try again later.`';
-}
+        }).join('\n');
+        
+        return `${mainHeader}\n\n${groupStats}\n*Top Token Lords*\n${leaderboardEntries}`;
+    } catch (error) {
+        console.error('❌ Failed to build leaderboard:', error.message);
+        return '`Failed to build leaderboard. Please try again later.`';
+    }
 }
 
 // --- Enhanced Mobile-Friendly Gemini Reply Function ---
 async function getGeminiReply(prompt) {
-try {
-// Create dynamic prompt based on question nature
-const dynamicPrompt = analyzeQuestionAndCreatePrompt(prompt);
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({
-model: "gemini-2.5-flash-lite"
-});
-const result = await model.generateContent(dynamicPrompt);
-const response = await result.response;
-let text = response.text();
-// Extra safety: If response is still too long, truncate it
-if (text.length > 450) {
-text = text.substring(0, 400) + "...";
-}
-return text;
-} catch (e) {
-console.error("❌ Google Generative AI API failed:", e.message);
-return "Sorry, I'm having trouble right now. Please try again!";
-}
+    try {
+        // Create dynamic prompt based on question nature
+        const dynamicPrompt = analyzeQuestionAndCreatePrompt(prompt);
+        
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash-lite"
+        });
+        
+        const result = await model.generateContent(dynamicPrompt);
+        const response = await result.response;
+        let text = response.text();
+        
+        // Extra safety: If response is still too long, truncate it
+        if (text.length > 450) {
+            text = text.substring(0, 400) + "...";
+        }
+        
+        return text;
+    } catch (e) {
+        console.error("❌ Google Generative AI API failed:", e.message);
+        return "Sorry, I'm having trouble right now. Please try again!";
+    }
 }
 
 // --- Main webhook handler ---
 export default async function handler(req, res) {
-res.setHeader('Access-Control-Allow-Origin', '*');
-res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-if (req.method === 'OPTIONS') {
-return res.status(200).end();
-}
-if (req.method === 'GET') {
-return res.status(200).json({
-status: 'Webhook endpoint is working!',
-method: 'GET',
-timestamp: new Date().toISOString()
-});
-}
-if (req.method !== 'POST') {
-return res.status(405).json({ message: 'Method not allowed' });
-}
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!BOT_TOKEN) {
-console.error('❌ TELEGRAM_BOT_TOKEN not set');
-return res.status(500).json({ error: 'Bot token not configured' });
-}
-try {
-const update = req.body;
-if (!update || (!update.message && !update.callback_query)) {
-return res.status(200).json({ ok: true, message: 'No message or callback in update' });
-}
-if (update.callback_query) {
-const callbackQuery = update.callback_query;
-const chatId = callbackQuery.message.chat.id;
-const messageId = callbackQuery.message.message_id;
-const messageThreadId = callbackQuery.message.message_thread_id;
-const callbackData = callbackQuery.data;
-await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-callback_query_id: callbackQuery.id
-});
-if (callbackData.startsWith('refresh_')) {
-const originalCommand = callbackData.substring('refresh_'.length);
-let reply = '';
-let isPhoto = false;
-let photoUrl = '';
-if (originalCommand.startsWith('dexscreener_')) {
-const address = originalCommand.substring('dexscreener_'.length);
-const dexScreenerData = await getCoinFromDexScreener(address);
-if (dexScreenerData) {
-reply = buildDexScreenerReply(dexScreenerData);
-// Get first post information for signature
-const firstPostInfo = await getFirstPostInfo(address, chatId);
-if (firstPostInfo) {
-const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
-reply += signature;
-}
-} else {
-reply = '`Could not refresh DexScreener data.`';
-}
-}
-else if (originalCommand.startsWith('chart_')) {
-const symbol = originalCommand.substring('chart_'.length);
-const coinData = await getCoinDataWithChanges(symbol);
-if (coinData) {
-const historicalData = await getHistoricalData(coinData.id);
-if (historicalData && historicalData.length > 0) {
-reply = `*${coinData.name}* Price Chart (30 Days)`;
-photoUrl = getChartImageUrl(coinData.name, historicalData);
-isPhoto = true;
-} else {
-reply = `\`Failed to get chart data for ${coinData.name}\``;
-}
-} else {
-reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
-}
-}
-else if (originalCommand === 'gas') {
-const ethCoin = await getCoinDataWithChanges('eth');
-const ethPrice = ethCoin ? ethCoin.current_price : null;
-const gasPrices = await getEthGasPrice();
-if (ethPrice && gasPrices) {
-reply = buildGasReply(gasPrices, ethPrice);
-} else {
-reply = '`Failed to retrieve gas data`';
-}
-}
-else if (originalCommand.startsWith('compare_')) {
-const parts = originalCommand.substring('compare_'.length).split('_');
-const [symbol1, symbol2] = parts;
-const coin1 = await getCoinDataWithChanges(symbol1);
-const coin2 = await getCoinDataWithChanges(symbol2);
-if (coin1 && coin2) {
-const circulatingSupply1 = coin1.circulating_supply;
-const marketCap2 = coin2.market_cap;
-let theoreticalPrice = null;
-if (circulatingSupply1 > 0 && marketCap2 > 0) {
-theoreticalPrice = marketCap2 / circulatingSupply1;
-}
-if (theoreticalPrice) {
-reply = buildCompareReply(coin1, coin2, theoreticalPrice);
-} else {
-reply = '`Could not perform comparison. Missing required data.`';
-}
-} else {
-reply = '`One or both coins were not found.`';
-}
-}
-else if (originalCommand.startsWith('leaderboard')) {
-reply = await buildLeaderboardReply(chatId);
-await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
-return res.status(200).json({ ok: true });
-}
-else {
-const coin = await getCoinDataWithChanges(originalCommand);
-if (coin) {
-reply = buildReply(coin, 1);
-} else {
-reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
-}
-}
-await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, photoUrl, originalCommand);
-} else if (callbackData === 'delete_message') {
-try {
-await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
-chat_id: chatId,
-message_id: messageId
-});
-} catch (error) {
-console.error('❌ Error deleting message:', error.message);
-}
-}
-return res.status(200).json({ ok: true });
-}
-const msg = update.message;
-if (!msg || !msg.text) {
-return res.status(200).json({ ok: true, message: 'No text in message' });
-}
-const chatId = msg.chat.id;
-const messageId = msg.message_id;
-const messageThreadId = msg.message_thread_id;
-const text = msg.text.trim();
-const user = msg.from;
-const chatType = msg.chat.type;
-// --- Enhanced /que command handler with mobile-friendly responses ---
-if (text.startsWith('/que')) {
-const prompt = text.substring(4).trim();
-// Enhanced HTML escaping function
-function escapeHtml(str) {
-if (!str || typeof str !== 'string') return 'Empty response';
-return str
-.replace(/&/g, "&amp;")
-.replace(/</g, "&lt;")
-.replace(/>/g, "&gt;")
-.replace(/"/g, "&quot;")
-.replace(/'/g, "&#39;")
-.replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
-.trim();
-}
-try {
-let responseText;
-if (prompt.length > 0) {
-// Use enhanced Gemini function with mobile-friendly prompting
-responseText = await getGeminiReply(prompt);
-} else {
-responseText = "Please provide a query after the /que command.";
-}
-// Escape HTML and handle message length with smaller chunks
-responseText = escapeHtml(responseText);
-const messageParts = splitMessage(responseText, 600); // Smaller chunks for mobile
-// Send each part as a separate message
-for (let i = 0; i < messageParts.length; i++) {
-const part = messageParts[i];
-const isLastPart = i === messageParts.length - 1;
-// Add part indicator for multi-part messages (but with smaller parts, this should be rare)
-const partIndicator = messageParts.length > 1 ?
-`\n\n📱 ${i + 1}/${messageParts.length}` : '';
-await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-chat_id: chatId,
-text: part + partIndicator,
-reply_to_message_id: isLastPart ? msg.message_id : undefined,
-parse_mode: "HTML"
-});
-// Small delay between messages to maintain order
-if (i < messageParts.length - 1) {
-await new Promise(resolve => setTimeout(resolve, 100));
-}
-}
-} catch (err) {
-console.error("Telegram API error:", err.response?.data || err.message);
-// Fallback error message
-try {
-await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-chat_id: chatId,
-text: "Sorry, I'm having trouble right now. Please try again!",
-reply_to_message_id: msg.message_id,
-parse_mode: "HTML"
-});
-} catch (fallbackErr) {
-console.error("Fallback message also failed:", fallbackErr);
-}
-}
-return res.status(200).json({ ok: true });
-}
-// --- Original message filtering logic ---
-const isCommand = text.startsWith('/') || text.startsWith('.');
-const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
-const isCalculation = mathRegex.test(text);
-const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
-const isCoinCheck = re.test(text);
-const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
-if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
-return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
-}
-// --- MODIFIED: Address handling with first post tracking ---
-if (isAddress) {
-const dexScreenerData = await getCoinFromDexScreener(text);
-if (dexScreenerData) {
-const reply = buildDexScreenerReply(dexScreenerData);
-const callbackData = `dexscreener_${text}`;
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
+    if (req.method === 'GET') {
+        return res.status(200).json({
+            status: 'Webhook endpoint is working!',
+            method: 'GET',
+            timestamp: new Date().toISOString()
+        });
+    }
+    
+    if (req.method !== 'POST') {
+        return res.status(405).json({ message: 'Method not allowed' });
+    }
+    
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    if (!BOT_TOKEN) {
+        console.error('❌ TELEGRAM_BOT_TOKEN not set');
+        return res.status(500).json({ error: 'Bot token not configured' });
+    }
+    
+    try {
+        const update = req.body;
+        
+        if (!update || (!update.message && !update.callback_query)) {
+            return res.status(200).json({ ok: true, message: 'No message or callback in update' });
+        }
+        
+        // --- ENHANCED: Handle callback queries for timeframe selection ---
+        if (update.callback_query) {
+            const callbackQuery = update.callback_query;
+            const chatId = callbackQuery.message.chat.id;
+            const messageId = callbackQuery.message.message_id;
+            const messageThreadId = callbackQuery.message.message_thread_id;
+            const callbackData = callbackQuery.data;
             
-// Check if this address was posted before in this chat
-const firstPostInfo = await getFirstPostInfo(text, chatId);
+            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+                callback_query_id: callbackQuery.id
+            });
             
-if (firstPostInfo) {
-// Address was posted before - use FIRST post information for signature
-console.log('🔄 Using existing first post info for signature');
-const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
-} else {
-// This is the FIRST time this address is posted in this chat
-console.log('🆕 First time posting this address, storing first post info');
-const username = user.username || user.first_name || `User${user.id}`;
-const currentTimestamp = admin.firestore.FieldValue.serverTimestamp();
+            // --- Handle timeframe-specific chart requests ---
+            if (callbackData.startsWith('chart_1d_') || callbackData.startsWith('chart_7d_') || 
+                callbackData.startsWith('chart_30d_') || callbackData.startsWith('chart_90d_')) {
                 
-// Store first post information
-await storeFirstPostInfo(
-text, 
-chatId, 
-username, 
-dexScreenerData.marketCap, 
-currentTimestamp, 
-messageId, 
-dexScreenerData.baseToken.symbol
-);
+                const parts = callbackData.split('_');
+                const timeframe = parts[1].toUpperCase(); // 1D, 7D, 30D, 90D
+                const symbol = parts.slice(2).join('_'); // Rejoin in case symbol has underscores
                 
-// Create signature with current user as the first poster
-const firstPostData = {
-firstUsername: username,
-firstMarketCap: dexScreenerData.marketCap,
-firstTimestamp: new Date(), // Use current time for new posts
-firstMessageId: messageId
-};
+                const coinData = await getCoinDataWithChanges(symbol);
+                if (coinData) {
+                    let days;
+                    switch(timeframe) {
+                        case '1D': days = 1; break;
+                        case '7D': days = 7; break;
+                        case '30D': days = 30; break;
+                        case '90D': days = 90; break;
+                        default: days = 30;
+                    }
+                    
+                    // Try to get OHLC data for candlestick chart
+                    const ohlcData = await getOHLCData(coinData.id, days);
+                    let chartUrl, caption;
+                    
+                    if (ohlcData && ohlcData.length > 0) {
+                        chartUrl = getCandlestickChartUrl(coinData.name, ohlcData, timeframe);
+                        caption = `*${coinData.name}* Candlestick Chart (${timeframe})`;
+                    } else {
+                        // Fallback to line chart if OHLC not available
+                        const historicalData = await getHistoricalData(coinData.id);
+                        if (historicalData && historicalData.length > 0) {
+                            chartUrl = getChartImageUrl(coinData.name, historicalData);
+                            caption = `*${coinData.name}* Price Chart (${timeframe}) - Line Chart Fallback`;
+                        } else {
+                            caption = `\`Failed to get chart data for ${coinData.name}\``;
+                        }
+                    }
+                    
+                    if (chartUrl) {
+                        await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, chartUrl, symbol, true);
+                    } else {
+                        await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, '', symbol, false);
+                    }
+                } else {
+                    await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, '', symbol, false);
+                }
                 
-const signature = buildSignature(firstPostData, dexScreenerData.priceChange?.h1 || 0, chatId);
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
-}
+                return res.status(200).json({ ok: true });
+            }
             
-// Always log to queries collection for leaderboard
-await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap, messageId);
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
-}
-}
-else if (isCommand) {
-const parts = text.substring(1).toLowerCase().split(' ');
-const command = parts[0].split('@')[0]; // Fix: Extract just the command name
-const symbol = parts[1];
-if (command === 'leaderboard') {
-const reply = await buildLeaderboardReply(chatId);
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'leaderboard');
-}
-else if (command === 'chart' && symbol) {
-const coinData = await getCoinDataWithChanges(symbol);
-if (coinData) {
-const historicalData = await getHistoricalData(coinData.id);
-if (historicalData && historicalData.length > 0) {
-const chartImageUrl = getChartImageUrl(coinData.name, historicalData);
-await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, `*${coinData.name}* Price Chart (30 Days)`, `chart_${symbol}`);
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Failed to get chart data for ${coinData.name}\``, `chart_${symbol}`);
-}
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, `chart_${symbol}`);
-}
-}
-else if (command === 'gas') {
-const ethCoin = await getCoinDataWithChanges('eth');
-const ethPrice = ethCoin ? ethCoin.current_price : null;
-const gasPrices = await getEthGasPrice();
-if (ethPrice && gasPrices) {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice), 'gas');
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`', 'gas');
-}
-}
-else if (command === 'compare') {
-const [symbol1, symbol2] = parts.slice(1);
-if (symbol1 && symbol2) {
-const coin1 = await getCoinDataWithChanges(symbol1);
-const coin2 = await getCoinDataWithChanges(symbol2);
-if (coin1 && coin2) {
-const circulatingSupply1 = coin1.circulating_supply;
-const marketCap2 = coin2.market_cap;
-let theoreticalPrice = null;
-if (circulatingSupply1 > 0 && marketCap2 > 0) {
-theoreticalPrice = marketCap2 / circulatingSupply1;
-}
-if (theoreticalPrice) {
-const reply = buildCompareReply(coin1, coin2, theoreticalPrice);
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
-} else {
-const reply = '`Could not perform comparison. Missing required data.`';
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
-}
-} else {
-const reply = '`One or both coins were not found.`';
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
-}
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`', `compare_${symbol1}_${symbol2}`);
-}
-}
-else if (command === 'start') {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-'`Welcome to Crypto Price Bot! Type /help for commands.`');
-}
-else if (command === 'help') {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-'`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Price chart\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nWorks for top 500 coins`');
-}
-else if (command === 'test') {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-`\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
-}
-}
-else if (isCalculation) {
-const result = evaluateExpression(text);
-if (result !== null) {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`${text} = ${result}\``);
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
-}
-}
-else if (isCoinCheck) {
-const m = text.toLowerCase().match(re);
-let amount, symbol;
-if (m[1] && m[2]) {
-amount = parseFloat(m[1]);
-symbol = m[2];
-} else if (m[3] && m[4]) {
-symbol = m[3];
-amount = parseFloat(m[4]);
-}
-if (amount && symbol) {
-const coin = await getCoinDataWithChanges(symbol);
-if (coin) {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount), symbol);
-} else {
-await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, symbol);
-}
-}
-}
-return res.status(200).json({ ok: true });
-} catch (error) {
-console.error('❌ Webhook error:', error.message);
-console.error('Stack:', error.stack);
-return res.status(500).json({ error: 'Internal server error', message: error.message });
-}
+            if (callbackData.startsWith('refresh_')) {
+                const originalCommand = callbackData.substring('refresh_'.length);
+                let reply = '';
+                let isPhoto = false;
+                let photoUrl = '';
+                let showTimeframeButtons = false;
+                
+                if (originalCommand.startsWith('dexscreener_')) {
+                    const address = originalCommand.substring('dexscreener_'.length);
+                    const dexScreenerData = await getCoinFromDexScreener(address);
+                    if (dexScreenerData) {
+                        reply = buildDexScreenerReply(dexScreenerData);
+                        
+                        // Get first post information for signature
+                        const firstPostInfo = await getFirstPostInfo(address, chatId);
+                        if (firstPostInfo) {
+                            const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
+                            reply += signature;
+                        }
+                    } else {
+                        reply = '`Could not refresh DexScreener data.`';
+                    }
+                }
+                else if (originalCommand.startsWith('chart_')) {
+                    const symbol = originalCommand.substring('chart_'.length);
+                    const coinData = await getCoinDataWithChanges(symbol);
+                    if (coinData) {
+                        // Default to 30D candlestick chart
+                        const ohlcData = await getOHLCData(coinData.id, 30);
+                        if (ohlcData && ohlcData.length > 0) {
+                            reply = `*${coinData.name}* Candlestick Chart (30D)`;
+                            photoUrl = getCandlestickChartUrl(coinData.name, ohlcData, '30D');
+                            isPhoto = true;
+                            showTimeframeButtons = true;
+                        } else {
+                            // Fallback to line chart
+                            const historicalData = await getHistoricalData(coinData.id);
+                            if (historicalData && historicalData.length > 0) {
+                                reply = `*${coinData.name}* Price Chart (30D) - Line Chart Fallback`;
+                                photoUrl = getChartImageUrl(coinData.name, historicalData);
+                                isPhoto = true;
+                            } else {
+                                reply = `\`Failed to get chart data for ${coinData.name}\``;
+                            }
+                        }
+                    } else {
+                        reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
+                    }
+                }
+                else if (originalCommand === 'gas') {
+                    const ethCoin = await getCoinDataWithChanges('eth');
+                    const ethPrice = ethCoin ? ethCoin.current_price : null;
+                    const gasPrices = await getEthGasPrice();
+                    if (ethPrice && gasPrices) {
+                        reply = buildGasReply(gasPrices, ethPrice);
+                    } else {
+                        reply = '`Failed to retrieve gas data`';
+                    }
+                }
+                else if (originalCommand.startsWith('compare_')) {
+                    const parts = originalCommand.substring('compare_'.length).split('_');
+                    const [symbol1, symbol2] = parts;
+                    const coin1 = await getCoinDataWithChanges(symbol1);
+                    const coin2 = await getCoinDataWithChanges(symbol2);
+                    if (coin1 && coin2) {
+                        const circulatingSupply1 = coin1.circulating_supply;
+                        const marketCap2 = coin2.market_cap;
+                        let theoreticalPrice = null;
+                        if (circulatingSupply1 > 0 && marketCap2 > 0) {
+                            theoreticalPrice = marketCap2 / circulatingSupply1;
+                        }
+                        if (theoreticalPrice) {
+                            reply = buildCompareReply(coin1, coin2, theoreticalPrice);
+                        } else {
+                            reply = '`Could not perform comparison. Missing required data.`';
+                        }
+                    } else {
+                        reply = '`One or both coins were not found.`';
+                    }
+                }
+                else if (originalCommand.startsWith('leaderboard')) {
+                    reply = await buildLeaderboardReply(chatId);
+                    await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
+                    return res.status(200).json({ ok: true });
+                }
+                else {
+                    const coin = await getCoinDataWithChanges(originalCommand);
+                    if (coin) {
+                        reply = buildReply(coin, 1);
+                    } else {
+                        reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+                    }
+                }
+                
+                await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, photoUrl, originalCommand, showTimeframeButtons);
+                
+            } else if (callbackData === 'delete_message') {
+                try {
+                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+                        chat_id: chatId,
+                        message_id: messageId
+                    });
+                } catch (error) {
+                    console.error('❌ Error deleting message:', error.message);
+                }
+            }
+            
+            return res.status(200).json({ ok: true });
+        }
+        
+        const msg = update.message;
+        if (!msg || !msg.text) {
+            return res.status(200).json({ ok: true, message: 'No text in message' });
+        }
+        
+        const chatId = msg.chat.id;
+        const messageId = msg.message_id;
+        const messageThreadId = msg.message_thread_id;
+        const text = msg.text.trim();
+        const user = msg.from;
+        const chatType = msg.chat.type;
+        
+        // --- Enhanced /que command handler with mobile-friendly responses ---
+        if (text.startsWith('/que')) {
+            const prompt = text.substring(4).trim();
+            
+            // Enhanced HTML escaping function
+            function escapeHtml(str) {
+                if (!str || typeof str !== 'string') return 'Empty response';
+                return str
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;")
+                    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+                    .trim();
+            }
+            
+            try {
+                let responseText;
+                if (prompt.length > 0) {
+                    // Use enhanced Gemini function with mobile-friendly prompting
+                    responseText = await getGeminiReply(prompt);
+                } else {
+                    responseText = "Please provide a query after the /que command.";
+                }
+                
+                // Escape HTML and handle message length with smaller chunks
+                responseText = escapeHtml(responseText);
+                const messageParts = splitMessage(responseText, 600); // Smaller chunks for mobile
+                
+                // Send each part as a separate message
+                for (let i = 0; i < messageParts.length; i++) {
+                    const part = messageParts[i];
+                    const isLastPart = i === messageParts.length - 1;
+                    
+                    // Add part indicator for multi-part messages (but with smaller parts, this should be rare)
+                    const partIndicator = messageParts.length > 1 ?
+                        `\n\n📱 ${i + 1}/${messageParts.length}` : '';
+                    
+                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                        chat_id: chatId,
+                        text: part + partIndicator,
+                        reply_to_message_id: isLastPart ? msg.message_id : undefined,
+                        parse_mode: "HTML"
+                    });
+                    
+                    // Small delay between messages to maintain order
+                    if (i < messageParts.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
+            } catch (err) {
+                console.error("Telegram API error:", err.response?.data || err.message);
+                
+                // Fallback error message
+                try {
+                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                        chat_id: chatId,
+                        text: "Sorry, I'm having trouble right now. Please try again!",
+                        reply_to_message_id: msg.message_id,
+                        parse_mode: "HTML"
+                    });
+                } catch (fallbackErr) {
+                    console.error("Fallback message also failed:", fallbackErr);
+                }
+            }
+            
+            return res.status(200).json({ ok: true });
+        }
+        
+        // --- Original message filtering logic ---
+        const isCommand = text.startsWith('/') || text.startsWith('.');
+        const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
+        const isCalculation = mathRegex.test(text);
+        const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
+        const isCoinCheck = re.test(text);
+        const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
+        
+        if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
+            return res.status(200).json({ ok: true, message: 'Ignoring non-command/calculation/coin message' });
+        }
+        
+        // --- MODIFIED: Address handling with first post tracking ---
+        if (isAddress) {
+            const dexScreenerData = await getCoinFromDexScreener(text);
+            if (dexScreenerData) {
+                const reply = buildDexScreenerReply(dexScreenerData);
+                const callbackData = `dexscreener_${text}`;
+                
+                // Check if this address was posted before in this chat
+                const firstPostInfo = await getFirstPostInfo(text, chatId);
+                
+                if (firstPostInfo) {
+                    // Address was posted before - use FIRST post information for signature
+                    console.log('🔄 Using existing first post info for signature');
+                    const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
+                } else {
+                    // This is the FIRST time this address is posted in this chat
+                    console.log('🆕 First time posting this address, storing first post info');
+                    const username = user.username || user.first_name || `User${user.id}`;
+                    const currentTimestamp = admin.firestore.FieldValue.serverTimestamp();
+                    
+                    // Store first post information
+                    await storeFirstPostInfo(
+                        text, 
+                        chatId, 
+                        username, 
+                        dexScreenerData.marketCap, 
+                        currentTimestamp, 
+                        messageId, 
+                        dexScreenerData.baseToken.symbol
+                    );
+                    
+                    // Create signature with current user as the first poster
+                    const firstPostData = {
+                        firstUsername: username,
+                        firstMarketCap: dexScreenerData.marketCap,
+                        firstTimestamp: new Date(), // Use current time for new posts
+                        firstMessageId: messageId
+                    };
+                    
+                    const signature = buildSignature(firstPostData, dexScreenerData.priceChange?.h1 || 0, chatId);
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
+                }
+                
+                // Always log to queries collection for leaderboard
+                await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap, messageId);
+            } else {
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
+            }
+        }
+        else if (isCommand) {
+            const parts = text.substring(1).toLowerCase().split(' ');
+            const command = parts[0].split('@')[0]; // Fix: Extract just the command name
+            const symbol = parts[1];
+            
+            if (command === 'leaderboard') {
+                const reply = await buildLeaderboardReply(chatId);
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'leaderboard');
+            }
+            // --- ENHANCED: Chart command with candlestick support ---
+            else if (command === 'chart' && symbol) {
+                const coinData = await getCoinDataWithChanges(symbol);
+                if (coinData) {
+                    // Try to get OHLC data for candlestick chart (default 30 days)
+                    const ohlcData = await getOHLCData(coinData.id, 30);
+                    
+                    if (ohlcData && ohlcData.length > 0) {
+                        const chartImageUrl = getCandlestickChartUrl(coinData.name, ohlcData, '30D');
+                        await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, 
+                            `*${coinData.name}* Candlestick Chart (30D)`, symbol, true);
+                    } else {
+                        // Fallback to line chart if OHLC data not available
+                        const historicalData = await getHistoricalData(coinData.id);
+                        if (historicalData && historicalData.length > 0) {
+                            const chartImageUrl = getChartImageUrl(coinData.name, historicalData);
+                            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl, 
+                                `*${coinData.name}* Price Chart (30D) - Line Chart Fallback`, symbol, false);
+                        } else {
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                                `\`Failed to get chart data for ${coinData.name}\``, `chart_${symbol}`);
+                        }
+                    }
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `\`Coin "${symbol.toUpperCase()}" not found\``, `chart_${symbol}`);
+                }
+            }
+            else if (command === 'gas') {
+                const ethCoin = await getCoinDataWithChanges('eth');
+                const ethPrice = ethCoin ? ethCoin.current_price : null;
+                const gasPrices = await getEthGasPrice();
+                if (ethPrice && gasPrices) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildGasReply(gasPrices, ethPrice), 'gas');
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`', 'gas');
+                }
+            }
+            else if (command === 'compare') {
+                const [symbol1, symbol2] = parts.slice(1);
+                if (symbol1 && symbol2) {
+                    const coin1 = await getCoinDataWithChanges(symbol1);
+                    const coin2 = await getCoinDataWithChanges(symbol2);
+                    if (coin1 && coin2) {
+                        const circulatingSupply1 = coin1.circulating_supply;
+                        const marketCap2 = coin2.market_cap;
+                        let theoreticalPrice = null;
+                        if (circulatingSupply1 > 0 && marketCap2 > 0) {
+                            theoreticalPrice = marketCap2 / circulatingSupply1;
+                        }
+                        if (theoreticalPrice) {
+                            const reply = buildCompareReply(coin1, coin2, theoreticalPrice);
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
+                        } else {
+                            const reply = '`Could not perform comparison. Missing required data.`';
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
+                        }
+                    } else {
+                        const reply = '`One or both coins were not found.`';
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
+                    }
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`', `compare_${symbol1}_${symbol2}`);
+                }
+            }
+            else if (command === 'start') {
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+                    '`Welcome to Crypto Price Bot! Type /help for commands.`');
+            }
+            else if (command === 'help') {
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
+            }
+            else if (command === 'test') {
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
+                    `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
+            }
+            else {
+                // Handle coin symbol commands like /btc, /eth, etc.
+                const coin = await getCoinDataWithChanges(command);
+                if (coin) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1), command);
+                }
+            }
+        }
+        else if (isCalculation) {
+            const result = evaluateExpression(text);
+            if (result !== null) {
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`${text} = ${result}\``);
+            } else {
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
+            }
+        }
+        else if (isCoinCheck) {
+            const m = text.toLowerCase().match(re);
+            let amount, symbol;
+            if (m[1] && m[2]) {
+                amount = parseFloat(m[1]);
+                symbol = m[2];
+            } else if (m[3] && m[4]) {
+                symbol = m[3];
+                amount = parseFloat(m[4]);
+            }
+            
+            if (amount && symbol) {
+                const coin = await getCoinDataWithChanges(symbol);
+                if (coin) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount), symbol);
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, symbol);
+                }
+            }
+        }
+        
+        return res.status(200).json({ ok: true });
+    } catch (error) {
+        console.error('❌ Webhook error:', error.message);
+        console.error('Stack:', error.stack);
+        return res.status(500).json({ error: 'Internal server error', message: error.message });
+    }
 }
