@@ -1021,125 +1021,7 @@ Return: ${avgReturn}%
     }
 }
 
-// --- Generate Quote Sticker URL ---
-function generateQuoteStickerUrl(text, username, userPhoto = null) {
-    try {
-        // Clean and truncate text if too long
-        const maxLength = 200;
-        const cleanText = text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
-        
-        // Create a quote design using HTML canvas approach via QuickChart
-        const config = {
-            type: 'doughnut', // We'll override this with HTML
-            data: { datasets: [{ data: [1] }] },
-            options: {
-                plugins: {
-                    datalabels: { display: false },
-                    legend: { display: false }
-                }
-            }
-        };
-        
-        // Use QuickChart's chart generation but we'll create a custom quote design
-        const quoteHtml = `
-        <div style="
-            width: 400px; 
-            min-height: 200px; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
-            padding: 30px;
-            font-family: 'Arial', sans-serif;
-            color: white;
-            position: relative;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        ">
-            <div style="font-size: 40px; opacity: 0.3; margin-bottom: 10px;">"</div>
-            <div style="
-                font-size: 18px;
-                line-height: 1.4;
-                margin-bottom: 20px;
-                font-weight: 400;
-            ">${cleanText.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-            <div style="
-                font-size: 14px;
-                opacity: 0.8;
-                text-align: right;
-                font-weight: bold;
-            ">— ${username}</div>
-        </div>`;
-        
-        // Encode HTML for QuickChart
-        const encodedHtml = encodeURIComponent(quoteHtml);
-        return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
-            type: 'radialGauge',
-            data: { datasets: [{ data: [100] }] }
-        }))}&format=png&width=400&height=300`;
-        
-    } catch (error) {
-        console.error('❌ Quote sticker generation failed:', error.message);
-        return null;
-    }
-}
-
-// --- Alternative: Generate quote image using a simpler method ---
-function generateSimpleQuoteUrl(text, username) {
-    try {
-        const maxLength = 150;
-        const cleanText = text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
-        
-        // Create a simple text-based chart that looks like a quote
-        const config = {
-            type: 'bar',
-            data: {
-                labels: [''],
-                datasets: [{
-                    data: [1],
-                    backgroundColor: 'transparent',
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: false,
-                plugins: {
-                    legend: { display: false },
-                    title: {
-                        display: true,
-                        text: [
-                            `"${cleanText}"`,
-                            '',
-                            `— ${username}`
-                        ],
-                        font: {
-                            size: 16,
-                            family: 'Arial'
-                        },
-                        color: '#2c3e50',
-                        padding: 30
-                    }
-                },
-                scales: {
-                    x: { display: false },
-                    y: { display: false }
-                },
-                layout: {
-                    padding: {
-                        top: 20,
-                        bottom: 20,
-                        left: 30,
-                        right: 30
-                    }
-                }
-            }
-        };
-        
-        const encodedConfig = encodeURIComponent(JSON.stringify(config));
-        return `https://quickchart.io/chart?c=${encodedConfig}&w=500&h=300&backgroundColor=f8f9fa`;
-        
-    } catch (error) {
-        console.error('❌ Simple quote generation failed:', error.message);
-        return null;
-    }
-}
+// --- Enhanced Mobile-Friendly Gemini Reply Function ---
 async function getGeminiReply(prompt) {
     try {
         // Create dynamic prompt based on question nature
@@ -1466,38 +1348,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
         
-        // --- NEW: Quote Sticker Handler (/s command) ---
-        if (text.trim() === '/s' && msg.reply_to_message) {
-            const repliedMessage = msg.reply_to_message;
-            const quotedText = repliedMessage.text || repliedMessage.caption || 'No text to quote';
-            const quotedUsername = repliedMessage.from.username || 
-                                 repliedMessage.from.first_name || 
-                                 `User${repliedMessage.from.id}`;
-            
-            try {
-                const quoteImageUrl = generateSimpleQuoteUrl(quotedText, quotedUsername);
-                
-                if (quoteImageUrl) {
-                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        chat_id: chatId,
-                        photo: quoteImageUrl,
-                        caption: `Quote by ${quotedUsername}`,
-                        reply_to_message_id: msg.message_id,
-                        ...(messageThreadId && { message_thread_id: parseInt(messageThreadId) })
-                    });
-                } else {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                        '`Failed to generate quote sticker. Please try again.`');
-                }
-            } catch (error) {
-                console.error('❌ Quote sticker error:', error.message);
-                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                    '`Error creating quote sticker. Please try again later.`');
-            }
-            
-            return res.status(200).json({ ok: true });
-        }
-        
         // --- Original message filtering logic ---
         const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
@@ -1640,7 +1490,7 @@ export default async function handler(req, res) {
             }
             else if (command === 'help') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n/s - Reply to message to create quote sticker\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
+                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
             }
             else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
