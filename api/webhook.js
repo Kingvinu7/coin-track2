@@ -1021,7 +1021,88 @@ Return: ${avgReturn}%
     }
 }
 
-// --- Enhanced Mobile-Friendly Gemini Reply Function ---
+// --- Generate Quote Sticker URL using HTML to Image service ---
+function generateQuoteStickerUrl(text, username, userPhoto = null) {
+    try {
+        // Clean and truncate text if too long
+        const maxLength = 200;
+        const cleanText = text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
+        
+        // Escape HTML entities
+        const safeText = cleanText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        
+        // Create HTML for quote card
+        const htmlContent = `
+        <div style="
+            width: 400px;
+            min-height: 150px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 25px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: white;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        ">
+            <div style="
+                font-size: 18px;
+                line-height: 1.5;
+                margin-bottom: 20px;
+                font-weight: 400;
+                text-align: left;
+            ">${safeText}</div>
+            <div style="
+                font-size: 14px;
+                opacity: 0.9;
+                text-align: right;
+                font-weight: 600;
+                margin-top: auto;
+            ">— ${username}</div>
+        </div>`;
+        
+        // Use htmlcsstoimage.com API or similar service
+        // For now, we'll use a different approach with QuickChart's HTML rendering
+        const encodedHtml = encodeURIComponent(htmlContent);
+        
+        // Use QuickChart's HTML rendering capability
+        return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+            type: 'html',
+            data: htmlContent
+        }))}&format=png&width=400&height=200&backgroundColor=transparent`;
+        
+    } catch (error) {
+        console.error('❌ Quote sticker generation failed:', error.message);
+        return null;
+    }
+}
+
+// --- Alternative: Use a text-to-image service approach ---
+function generateTextQuoteImage(text, username) {
+    try {
+        const maxLength = 150;
+        const cleanText = text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
+        
+        // Create URL for text-to-image generation
+        // This uses a different approach - creating an image with text overlay
+        const baseUrl = "https://via.placeholder.com/500x200/667eea/ffffff";
+        const textQuery = encodeURIComponent(`"${cleanText}"\n\n— ${username}`);
+        
+        // Alternative: Use a different service that supports custom quote generation
+        return `https://quickchart.io/wordcloud?text=${textQuery}&width=500&height=200&backgroundColor=667eea&fontFamily=Arial&fontColor=ffffff&maxFontSize=24&minFontSize=16`;
+        
+    } catch (error) {
+        console.error('❌ Text quote image generation failed:', error.message);
+        return null;
+    }
+}
 async function getGeminiReply(prompt) {
     try {
         // Create dynamic prompt based on question nature
@@ -1348,6 +1429,81 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
         
+        // --- NEW: Quote Sticker Handler (/s command) ---
+        if (text.trim() === '/s' && msg.reply_to_message) {
+            const repliedMessage = msg.reply_to_message;
+            const quotedText = repliedMessage.text || repliedMessage.caption || 'No text to quote';
+            const quotedUsername = repliedMessage.from.username || 
+                                 repliedMessage.from.first_name || 
+                                 `User${repliedMessage.from.id}`;
+            
+            try {
+                // Create a clean quote card similar to Quotely
+                const maxLength = 150;
+                const cleanText = quotedText.length > maxLength ? 
+                    quotedText.substring(0, maxLength) + "..." : quotedText;
+                
+                // Use Canvas API approach with better formatting
+                const quoteConfig = {
+                    type: 'line',
+                    data: {
+                        labels: [''],
+                        datasets: [{
+                            data: [0],
+                            borderColor: 'transparent',
+                            backgroundColor: 'transparent'
+                        }]
+                    },
+                    options: {
+                        responsive: false,
+                        plugins: {
+                            legend: { display: false },
+                            title: {
+                                display: true,
+                                text: [cleanText, '', `— ${quotedUsername}`],
+                                font: { size: 18, family: 'Arial', weight: 'normal' },
+                                color: '#2c3e50',
+                                padding: { top: 30, bottom: 30, left: 40, right: 40 }
+                            }
+                        },
+                        scales: { x: { display: false }, y: { display: false } },
+                        layout: { padding: 0 }
+                    }
+                };
+                
+                const quoteImageUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(quoteConfig))}&w=500&h=250&backgroundColor=f8f9fa&format=png`;
+                
+                try {
+                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                        chat_id: chatId,
+                        photo: quoteImageUrl,
+                        reply_to_message_id: msg.message_id,
+                        ...(messageThreadId && { message_thread_id: parseInt(messageThreadId) })
+                    });
+                } catch (photoError) {
+                    console.error('Photo send failed, trying formatted text:', photoError.message);
+                    
+                    // Fallback to beautifully formatted text message
+                    const formattedQuote = `┌─────────────────────┐\n│  💬 *Quote*  │\n└─────────────────────┘\n\n_"${cleanText}"_\n\n*— ${quotedUsername}*`;
+                    
+                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                        chat_id: chatId,
+                        text: formattedQuote,
+                        parse_mode: 'Markdown',
+                        reply_to_message_id: msg.message_id,
+                        ...(messageThreadId && { message_thread_id: parseInt(messageThreadId) })
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Quote sticker error:', error.message);
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                    '`Error creating quote. Please try again.`');
+            }
+            
+            return res.status(200).json({ ok: true });
+        }
+        
         // --- Original message filtering logic ---
         const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
@@ -1490,7 +1646,7 @@ export default async function handler(req, res) {
             }
             else if (command === 'help') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
+                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n/s - Reply to message to create quote sticker\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
             }
             else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
