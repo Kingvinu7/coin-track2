@@ -94,7 +94,7 @@ Be a helpful, concise assistant:
 
     systemPrompt += `
 
-CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
+CRITICAL MOBILE-FRIE N DLY REQUIREMENTS:
 - Maximum 400 characters total (STRICT LIMIT)
 - Use 4-5 short sentences maximum
 - No markdown formatting (* _ \` [ ] { } etc.)
@@ -171,6 +171,42 @@ function formatTimeDuration(seconds) {
         const days = Math.floor(seconds / 86400);
         const remainingHours = Math.floor((seconds % 86400) / 3600);
         return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+    }
+}
+
+// --- NEW: Generate Quote Image using external API ---
+async function getQuoteImageUrl(message, repliedToMessage) {
+    try {
+        const payload = {
+            messages: [{
+                text: message.text,
+                from: {
+                    id: message.from.id,
+                    name: message.from.first_name,
+                    username: message.from.username
+                }
+            }]
+        };
+        // If the message is a reply, add the replied-to message as a quote in the payload
+        if (repliedToMessage && repliedToMessage.text) {
+            payload.messages[0].reply_message = {
+                text: repliedToMessage.text,
+                from: {
+                    id: repliedToMessage.from.id,
+                    name: repliedToMessage.from.first_name,
+                    username: repliedToMessage.from.username
+                }
+            };
+        }
+        const response = await axios.post('https://bot.lyo.su/quote/generate.webp', payload, {
+            responseType: 'arraybuffer', // Request the response as a binary buffer
+            timeout: 15000
+        });
+        // The response.data is the image buffer
+        return response.data;
+    } catch (error) {
+        console.error('❌ Failed to generate quote image:', error.response?.data?.toString() || error.message);
+        return null;
     }
 }
 
@@ -277,7 +313,7 @@ async function getOHLCData(coinId, days) {
 // --- Get historical data for chart (fallback for line charts) ---
 async function getHistoricalData(coinId) {
     try {
-        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market-chart`, {
+        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
             params: {
                 vs_currency: "usd",
                 days: 30,
@@ -491,7 +527,7 @@ function getChartImageUrl(coinName, historicalData) {
                     tension: 0.1,
                     borderWidth: 2,
                     pointRadius: 1,
-                }],
+                }, ],
             },
             options: {
                 responsive: true,
@@ -532,26 +568,6 @@ function getChartImageUrl(coinName, historicalData) {
                 }]
             }
         }))}&w=400&h=250`;
-    }
-}
-
-// --- NEW: Simplified and more reliable quote image URL function ---
-function generateQuoteImageUrl(text) {
-    const encodedText = encodeURIComponent(text);
-    return `https://quickchart.io/text?text=${encodedText}&w=512&h=256&f=Arial&fs=24&c=%23000000`;
-}
-
-// --- NEW: Function to check if a URL returns an image ---
-async function isImageURL(url) {
-    try {
-        const response = await axios.head(url, {
-            timeout: 5000
-        });
-        const contentType = response.headers['content-type'];
-        return contentType && contentType.startsWith('image/');
-    } catch (error) {
-        console.error('❌ URL validation failed:', error.message);
-        return false;
     }
 }
 
@@ -776,7 +792,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
         },
         ...options
     };
-    const trySend = async (opts) => {
+    const trySend = async(opts) => {
         try {
             const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, opts, {
                 timeout: 10000,
@@ -870,7 +886,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
         reply_markup: replyMarkup
     };
 
-    const trySend = async (opts) => {
+    const trySend = async(opts) => {
         try {
             const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, opts, {
                 timeout: 15000,
@@ -972,7 +988,7 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageCaption`, options);
+            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
         } else {
             let options = { ...baseOptions,
                 text: text
@@ -980,7 +996,7 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, options);
+            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
         }
     } catch (error) {
         if (error.response?.data?.description?.includes('message is not modified')) {
@@ -1517,26 +1533,25 @@ export default async function handler(req, res) {
             const command = parts[0].split('@')[0]; // Fix: Extract just the command name
             const symbol = parts[1];
 
-            // --- NEW: Handle /s command for quote stickers ---
-            if (command === 's' && msg.reply_to_message) {
-                const quotedText = msg.reply_to_message.text || ' ';
-                const quoteImageUrl = generateQuoteImageUrl(quotedText);
-
-                // --- Validate the URL before sending to Telegram ---
-                if (await isImageURL(quoteImageUrl)) {
-                    await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageUrl);
-                } else {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to generate the quote sticker. Please try a different message.`');
-                }
-
-                return res.status(200).json({
-                    ok: true
-                });
-            }
-
             if (command === 'leaderboard') {
                 const reply = await buildLeaderboardReply(chatId);
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'leaderboard');
+            }
+            // --- NEW: Quote command handler ---
+            else if (command === 'quote' || command === 's') {
+                const repliedToMessage = msg.reply_to_message;
+                if (repliedToMessage) {
+                    const messageToQuote = repliedToMessage;
+                    const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null);
+                    if (quoteImageBuffer) {
+                        // Send the photo using the existing sendPhotoToTopic function.
+                        await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageBuffer, `Quote generated by @${user.username || user.first_name}`);
+                    } else {
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to generate quote image. Please try again later.`');
+                    }
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Please reply to a message with /quote or /s to create an image.`');
+                }
             }
             // --- ENHANCED: Chart command with candlestick support ---
             else if (command === 'chart' && symbol) {
@@ -1575,8 +1590,7 @@ export default async function handler(req, res) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`', 'gas');
                 }
             } else if (command === 'compare') {
-                const parts = parts.slice(1);
-                const [symbol1, symbol2] = parts;
+                const [symbol1, symbol2] = parts.slice(1);
                 if (symbol1 && symbol2) {
                     const coin1 = await getCoinDataWithChanges(symbol1);
                     const coin2 = await getCoinDataWithChanges(symbol2);
@@ -1606,7 +1620,7 @@ export default async function handler(req, res) {
                     '`Welcome to Crypto Price Bot! Type /help for commands.`');
             } else if (command === 'help') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n/s (reply) - Quote a message\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
+                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
             } else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
