@@ -538,12 +538,12 @@ let reply =
 🔗 CHAIN: \`#${formattedChain}\`
 🔄 DEX PAIR: \`${formattedExchange}\`
 
+💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
+✨ MARKET CAP: \`$${mc}\`
 🪙 ADDRESS:
 
 \`${token.address}\`
 
-💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
-✨ MARKET CAP: \`$${mc}\`
 ⚜️ VOLUME: \`$${vol}\`
 🌀 LP: \`$${lp}\`
 ` ;
