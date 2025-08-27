@@ -535,52 +535,52 @@ function getChartImageUrl(coinName, historicalData) {
     }
 }
 
-// --- Generate a quote image from text using QuickChart.io ---
+// --- NEW: Simplified and more reliable quote image URL function ---
 function generateQuoteImageUrl(text) {
-    // Use a simple text chart config for a reliable image output
     const config = {
         type: 'text',
         data: {
             datasets: [{
                 label: 'Quote',
-                data: [text]
+                data: [`“${text}”`]
             }]
         },
         options: {
             // General chart options
-            backgroundColor: '#ffffff',
             width: 512,
             height: 256,
-
+            backgroundColor: 'rgba(255, 255, 255, 0)', // Transparent background
+            
             // Styling for the text itself
             font: {
                 family: 'Arial', // A standard, clean font
-                size: 24, // Adjust font size for readability
+                size: 24,       // Adjust font size for readability
                 color: '#000000'
-            },
-
-            // Add quote symbols
-            plugins: {
-                datalabels: {
-                    display: true,
-                    formatter: (value) => `"${value}"`,
-                    font: {
-                        size: 30, // Larger font for the quote
-                        weight: 'bold'
-                    },
-                    color: '#000000'
-                }
             },
             padding: 20
         }
     };
-
+    
     // Use the /chart/render endpoint to get a direct image file
     const encodedConfig = encodeURIComponent(JSON.stringify(config));
     const url = `https://quickchart.io/chart/render?c=${encodedConfig}`;
-
+    
     return url;
 }
+
+
+// --- NEW: Function to check if a URL returns an image ---
+async function isImageURL(url) {
+    try {
+        const response = await axios.head(url, { timeout: 5000 });
+        const contentType = response.headers['content-type'];
+        return contentType && contentType.startsWith('image/');
+    } catch (error) {
+        console.error('❌ URL validation failed:', error.message);
+        return false;
+    }
+}
+
 
 // --- Build price reply with monospace formatting ---
 function buildReply(coin, amount) {
@@ -1548,7 +1548,14 @@ export default async function handler(req, res) {
             if (command === 's' && msg.reply_to_message) {
                 const quotedText = msg.reply_to_message.text || ' ';
                 const quoteImageUrl = generateQuoteImageUrl(quotedText);
-                await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageUrl);
+
+                // --- Validate the URL before sending to Telegram ---
+                if (await isImageURL(quoteImageUrl)) {
+                    await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageUrl);
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to generate the quote sticker. Please try a different message.`');
+                }
+                
                 return res.status(200).json({ ok: true });
             }
 
