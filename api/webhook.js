@@ -1120,7 +1120,7 @@ export default async function handler(req, res) {
                     
                     if (ohlcData && ohlcData.length > 0) {
                         chartUrl = getCandlestickChartUrl(coinData.name, ohlcData, timeframe);
-                        caption = `*${coinData.name}* Candlestick Chart (${timeframe})`;
+                        caption = `*${coinData.name}* OHLC Chart (${timeframe})`;
                     } else {
                         // Fallback to line chart if OHLC not available
                         const historicalData = await getHistoricalData(coinData.id);
@@ -1133,7 +1133,19 @@ export default async function handler(req, res) {
                     }
                     
                     if (chartUrl) {
-                        await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, chartUrl, symbol, true);
+                        // Delete the old message and send a new one to ensure image updates
+                        try {
+                            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+                                chat_id: chatId,
+                                message_id: messageId
+                            });
+                            
+                            await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartUrl, caption, symbol, true);
+                        } catch (deleteError) {
+                            console.warn('⚠️ Could not delete message, trying to edit instead');
+                            // Fallback to editing if deletion fails
+                            await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, chartUrl, symbol, true);
+                        }
                     } else {
                         await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, '', symbol, false);
                     }
