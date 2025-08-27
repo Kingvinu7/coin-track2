@@ -277,7 +277,7 @@ async function getOHLCData(coinId, days) {
 // --- Get historical data for chart (fallback for line charts) ---
 async function getHistoricalData(coinId) {
     try {
-        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
+        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market-chart`, {
             params: {
                 vs_currency: "usd",
                 days: 30,
@@ -537,7 +537,6 @@ function getChartImageUrl(coinName, historicalData) {
 
 // --- NEW: Simplified and more reliable quote image URL function ---
 function generateQuoteImageUrl(text) {
-    // The QuickChart /text endpoint is specifically for rendering text as an image.
     const encodedText = encodeURIComponent(text);
     return `https://quickchart.io/text?text=${encodedText}&w=512&h=256&f=Arial&fs=24&c=%23000000`;
 }
@@ -1576,7 +1575,8 @@ export default async function handler(req, res) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to retrieve gas data`', 'gas');
                 }
             } else if (command === 'compare') {
-                const [symbol1, symbol2] = parts.slice(1);
+                const parts = parts.slice(1);
+                const [symbol1, symbol2] = parts;
                 if (symbol1 && symbol2) {
                     const coin1 = await getCoinDataWithChanges(symbol1);
                     const coin2 = await getCoinDataWithChanges(symbol2);
