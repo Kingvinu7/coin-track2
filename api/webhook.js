@@ -361,66 +361,79 @@ return null;
 }
 }
 
-// --- ENHANCED: Generate Candlestick Chart URL ---
+// --- ENHANCED: Generate Candlestick Chart URL using Chart.js compatible format ---
 function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
 try {
 if (!ohlcData || ohlcData.length === 0) {
 throw new Error('No OHLC data provided');
 }
 
-// Convert OHLC data format: [timestamp, open, high, low, close]
-const candlestickData = ohlcData.map(candle => {
-const [timestamp, open, high, low, close] = candle;
-const date = new Date(timestamp);
-return {
-x: date.getTime(),
-o: parseFloat(open.toFixed(8)),
-h: parseFloat(high.toFixed(8)),
-l: parseFloat(low.toFixed(8)),
-c: parseFloat(close.toFixed(8))
-};
+// Sample data to avoid too many points
+const maxPoints = 50;
+const step = Math.max(1, Math.floor(ohlcData.length / maxPoints));
+const sampledData = ohlcData.filter((_, index) => index % step === 0);
+
+// Convert OHLC data to line chart with high/low bands since QuickChart doesn't support candlestick
+const labels = sampledData.map(candle => {
+const date = new Date(candle[0]);
+return timeframe === '1D' ? 
+    `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}` :
+    `${date.getMonth() + 1}/${date.getDate()}`;
 });
 
+const prices = sampledData.map(candle => parseFloat(candle[4].toFixed(8))); // Close prices
+const highs = sampledData.map(candle => parseFloat(candle[2].toFixed(8))); // High prices
+const lows = sampledData.map(candle => parseFloat(candle[3].toFixed(8))); // Low prices
+
 const chartConfig = {
-type: 'candlestick',
+type: 'line',
 data: {
-datasets: [{
-label: `${coinName} OHLC`,
-data: candlestickData,
-color: {
-up: '#00D09C',    // Green for bullish candles
-down: '#FF6B6B'   // Red for bearish candles
+labels: labels,
+datasets: [
+{
+label: 'Close Price',
+data: prices,
+borderColor: '#2E86C1',
+backgroundColor: 'rgba(46, 134, 193, 0.1)',
+fill: false,
+borderWidth: 2,
+pointRadius: 0
 },
-borderColor: {
-up: '#00A86B',
-down: '#DC143C'
+{
+label: 'High',
+data: highs,
+borderColor: '#27AE60',
+backgroundColor: 'rgba(39, 174, 96, 0.05)',
+fill: '+1',
+borderWidth: 1,
+pointRadius: 0
 },
-wickColor: {
-up: '#00A86B',
-down: '#DC143C'
+{
+label: 'Low',
+data: lows,
+borderColor: '#E74C3C',
+backgroundColor: 'rgba(231, 76, 60, 0.05)',
+fill: '-1',
+borderWidth: 1,
+pointRadius: 0
 }
-}]
+]
 },
 options: {
 responsive: true,
-maintainAspectRatio: false,
 plugins: {
 title: {
 display: true,
-text: `${coinName} - ${timeframe} Candlestick Chart`,
-font: { size: 16, weight: 'bold' }
+text: `${coinName} - ${timeframe} OHLC Chart`,
+font: { size: 16 }
 },
-legend: { display: false }
+legend: { 
+display: true,
+position: 'bottom'
+}
 },
 scales: {
 x: {
-type: 'time',
-time: {
-unit: timeframe === '1D' ? 'hour' : 
-     timeframe === '7D' ? 'day' : 
-     timeframe === '30D' ? 'day' : 
-     timeframe === '90D' ? 'week' : 'day'
-},
 display: true,
 title: {
 display: true,
@@ -435,6 +448,10 @@ text: 'Price (USD)'
 },
 beginAtZero: false
 }
+},
+interaction: {
+intersect: false,
+mode: 'index'
 }
 }
 };
@@ -444,26 +461,8 @@ return `https://quickchart.io/chart?c=${compactConfig}&w=600&h=400&backgroundCol
 
 } catch (error) {
 console.error('❌ Candlestick chart URL generation failed:', error.message);
-// Fallback to error chart
-return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
-type: 'bar',
-data: { 
-labels: ['Chart Error'], 
-datasets: [{ 
-data: [0], 
-backgroundColor: '#FF6B6B',
-label: 'Error generating candlestick chart'
-}] 
-},
-options: {
-plugins: {
-title: {
-display: true,
-text: `Error: Could not generate ${coinName} chart`
-}
-}
-}
-}))}&w=600&h=400&backgroundColor=white`;
+// Fallback to simple line chart
+return getChartImageUrl(coinName, ohlcData.map(candle => [candle[0], candle[4]]));
 }
 }
 
@@ -1485,13 +1484,8 @@ export default async function handler(req, res) {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
             }
-            else {
-                // Handle coin symbol commands like /btc, /eth, etc.
-                const coin = await getCoinDataWithChanges(command);
-                if (coin) {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, 1), command);
-                }
-            }
+            // Removed automatic coin symbol commands like /btc, /eth, etc.
+            // Only specific commands above are handled now
         }
         else if (isCalculation) {
             const result = evaluateExpression(text);
