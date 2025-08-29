@@ -1654,11 +1654,24 @@ export default async function handler(req, res) {
                 }
             } else if (command === 'start') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                    '`Welcome to Crypto Price Bot! Type /help for commands.`');
-            } else if (command === 'help') {
+                    '`hey welcome fren! Type /help to know more about the commands.`');
+                            } else if (command === 'help') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                    '`Commands:\n/eth - ETH price\n/gas - ETH gas prices\n/chart eth - Candlestick charts with timeframes\n/compare eth btc - Compare market caps\n/que [question] - Ask AI anything\n2 eth - Calculate value\nMath: 3+5, 100/5\n\nChart timeframes: 1D, 7D, 30D, 90D\nWorks for top 500 coins`');
-            } else if (command === 'test') {
+                    `*Commands:*
+[amount] [symbol] - Get a crypto price, e.g., \`2 eth\`
+/gas - Get current Ethereum gas prices
+/chart [symbol] - View a candlestick chart with timeframes, e.g., \`/chart eth\`
+/compare [symbol1] [symbol2] - Compare market caps, e.g., \`/compare eth btc\`
+/que [question] - Ask the AI anything, e.g., \`/que what is defi\`
+*/quote* or */s* - Reply to a message with this command to create a quote sticker
+/leaderboard - See the top token finders
+/help - Show this message
+
+*Other features:*
+- Send a token address to get token info
+- Use simple math, e.g., \`5 * 10\``);
+                
+            }  else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
             }
