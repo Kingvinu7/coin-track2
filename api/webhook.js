@@ -1430,8 +1430,15 @@ export default async function handler(req, res) {
         const chatType = msg.chat.type;
 
         // --- Enhanced /que command handler with mobile-friendly responses ---
+               // --- Enhanced /que command handler with mobile-friendly responses ---
         if (text.startsWith('/que')) {
-            const prompt = text.substring(4).trim();
+            let prompt = text.substring(4).trim();
+
+            // Check if the command is a reply to another message
+            if (msg.reply_to_message && msg.reply_to_message.text) {
+                const repliedText = msg.reply_to_message.text;
+                prompt = `(Context: "${repliedText}")\n\n${prompt}`;
+            }
 
             // Enhanced HTML escaping function
             function escapeHtml(str) {
@@ -1496,10 +1503,9 @@ export default async function handler(req, res) {
                 }
             }
 
-            return res.status(200).json({
-                ok: true
-            });
+            return res.status(200).json({ ok: true });
         }
+        
 
         // --- Original message filtering logic ---
         const isCommand = text.startsWith('/') || text.startsWith('.');
