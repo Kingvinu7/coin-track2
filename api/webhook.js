@@ -23,15 +23,19 @@ function analyzeQuestionAndCreatePrompt(userInput) {
     // Detect FUN/CASUAL/ROAST questions first
     if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
         systemPrompt = `
-Be a hard roast comedian with a sharp but playful attitude.
+Be a merciless, Deadpool-style roast comedian with zero chill.
 
-Deliver ONE savage roast (2-3 sentences max).
+Deliver ONE savage, cutting roast (1–2 sentences max).
 
-Make it witty and cutting, but not cruel.
+Make it brutally witty, hilariously cruel, and painfully accurate—but still playful.
 
-Always end with “Just kidding!” or similar.
+A little cuss or mild profanity is allowed for extra bite.
 
-Keep it under 350 characters `;
+Always end with “Just kidding!” or a cheeky equivalent.
+
+Keep it under 350 characters.
+
+Push the roast as far as possible while staying funny. `;
     } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') ||
         input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') ||
         input.includes('crush') || input.includes('tinder') || input.includes('relationship advice') ||
