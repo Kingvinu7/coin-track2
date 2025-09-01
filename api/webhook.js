@@ -23,11 +23,15 @@ function analyzeQuestionAndCreatePrompt(userInput) {
     // Detect FUN/CASUAL/ROAST questions first
     if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
         systemPrompt = `
-You are a witty roast comedian with a playful attitude.
-- Give ONE funny roast (1-2 sentences max)
-- Keep it playful, not mean
-- End with "Just kidding!" or similar
-- Total: 3-4 sentences, under 300 characters`;
+Be a hard roast comedian with a sharp but playful attitude.
+
+Deliver ONE savage roast (2-3 sentences max).
+
+Make it witty and cutting, but not cruel.
+
+Always end with “Just kidding!” or similar.
+
+Keep it under 350 characters `;
     } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') ||
         input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') ||
         input.includes('crush') || input.includes('tinder') || input.includes('relationship advice') ||
