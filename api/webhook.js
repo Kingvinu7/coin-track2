@@ -2,7 +2,7 @@
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import FormData from 'form-data';
-import ytdlp from 'yt-dlp-exec';
+import ytdlp from '@devsnek/yt-dlp';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -21,7 +21,6 @@ const db = admin.firestore();
 
 // --- SOCIAL MEDIA PREVIEW FUNCTIONS ---
 
-// URL Detection for social media platforms
 function detectSocialMediaUrls(text) {
     const urlPatterns = {
         twitter: /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/\w+\/status\/\d+/gi,
@@ -49,35 +48,48 @@ function detectSocialMediaUrls(text) {
     return detectedUrls;
 }
 
-// Extract media info using yt-dlp-exec
+// Extract media info using Python-free yt-dlp
 async function extractWithYtDlp(url) {
-    try {
-        console.log(`Trying yt-dlp for: ${url}`);
+  try {
+    console.log(`Trying yt-dlp for: ${url}`);
 
-        const info = await ytdlp(url, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            noCheckCertificates: true,
-        });
+    const info = await ytdlp.exec(url, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      noCheckCertificates: true
+    });
 
-        console.log(`yt-dlp success: ${info.title || 'No title'}`);
+    console.log(`yt-dlp success: ${info.title || 'No title'}`);
 
-        return {
-            title: info.title || 'No title',
-            description: info.description || '',
-            thumbnail: info.thumbnail,
-            duration: info.duration,
-            uploader: info.uploader || info.channel || info.uploader_id || 'Unknown',
-            upload_date: info.upload_date,
-            view_count: info.view_count,
-            platform: info.extractor_key?.toLowerCase() || 'unknown',
-            webpage_url: info.webpage_url || url,
-            video_url: info.formats?.find(f => f.filesize && f.filesize < 50000000)?.url || null
-        };
-    } catch (error) {
-        console.error(`yt-dlp extraction failed for ${url}:`, error.message);
-        return null;
+    // Pick the best available format with a direct URL
+    let videoUrl = null;
+    if (info.formats && info.formats.length > 0) {
+        const mp4 = info.formats
+            .filter(f => f.ext === 'mp4' && f.url)
+            .sort((a, b) => (b.width || 0) - (a.width || 0))[0];
+        if (mp4) {
+            videoUrl = mp4.url;
+        } else {
+            videoUrl = info.formats.find(f => f.url)?.url || null;
+        }
     }
+
+    return {
+      title: info.title || 'No title',
+      description: info.description || '',
+      thumbnail: info.thumbnail,
+      duration: info.duration,
+      uploader: info.uploader || info.channel || info.uploader_id || 'Unknown',
+      upload_date: info.upload_date,
+      view_count: info.view_count,
+      platform: info.extractor_key?.toLowerCase() || 'unknown',
+      webpage_url: info.webpage_url || url,
+      video_url: videoUrl
+    };
+  } catch (error) {
+    console.error(`yt-dlp extraction failed for ${url}:`, error.message);
+    return null;
+  }
 }
 
 // Web scraping fallback
@@ -170,7 +182,7 @@ async function tryAlternativeUrls(url, platform) {
     return null;
 }
 
-// Send social media message without refresh buttons
+// Send social media message
 async function sendSocialMediaMessage(botToken, chatId, messageThreadId, text) {
     try {
         const options = {
@@ -205,7 +217,7 @@ async function sendSocialMediaMessage(botToken, chatId, messageThreadId, text) {
     }
 }
 
-// Send social media photo without refresh buttons
+// Send social media photo
 async function sendSocialMediaPhoto(botToken, chatId, messageThreadId, photoUrl, caption) {
     try {
         const options = {
@@ -236,7 +248,6 @@ async function sendSocialMediaPhoto(botToken, chatId, messageThreadId, photoUrl,
         return response.data;
     } catch (error) {
         console.error('Failed to send social media photo:', error.response?.data || error.message);
-        // Fallback to text message
         return await sendSocialMediaMessage(botToken, chatId, messageThreadId, caption);
     }
 }
@@ -245,69 +256,31 @@ async function sendSocialMediaPhoto(botToken, chatId, messageThreadId, photoUrl,
 async function extractSocialMediaInfo(url, platform) {
     console.log(`Attempting to extract from ${platform}: ${url}`);
     
-    // Try yt-dlp first
     let info = await extractWithYtDlp(url);
-    if (info) {
-        console.log('yt-dlp extraction successful');
-        return info;
-    }
-    
-    // Try alternative URLs
+    if (info) return info;
+
     info = await tryAlternativeUrls(url, platform);
-    if (info) {
-        console.log('Alternative URL extraction successful');
-        return info;
-    }
-    
-    // Direct web scraping
+    if (info) return info;
+
     info = await scrapeBasicInfo(url);
-    if (info) {
-        console.log('Direct scraping successful');
-        return info;
-    }
-    
-    console.log('All extraction methods failed');
-    return null;
+    return info || null;
 }
 
 // Format preview message
 function formatSocialPreviewMessage(info, platform, originalUrl) {
-    const platformEmojis = {
-        twitter: '🐦',
-        instagram: '📷',
-        tiktok: '🎵',
-        reddit: '🤖',
-        youtube: '📺'
-    };
-    
+    const platformEmojis = { twitter: '🐦', instagram: '📷', tiktok: '🎵', reddit: '🤖', youtube: '📺' };
     const emoji = platformEmojis[platform] || '🔗';
     let message = `${emoji} **${platform.toUpperCase()} Preview**\n\n`;
     
-    if (info.title && info.title !== 'No title') {
-        message += `**${info.title}**\n\n`;
-    }
-    
-    if (info.uploader && info.uploader !== 'Unknown') {
-        message += `👤 By: ${info.uploader}\n`;
-    }
-    
-    if (info.view_count) {
-        message += `👀 ${fmtBig(info.view_count)} views\n`;
-    }
-    
-    if (info.duration) {
-        message += `⏱️ Duration: ${formatTimeDuration(info.duration)}\n`;
-    }
-    
-    if (info.description && info.description.length > 0) {
-        const desc = info.description.length > 150 
-            ? info.description.substring(0, 150) + '...' 
-            : info.description;
+    if (info.title && info.title !== 'No title') message += `**${info.title}**\n\n`;
+    if (info.uploader && info.uploader !== 'Unknown') message += `👤 By: ${info.uploader}\n`;
+    if (info.view_count) message += `👀 ${fmtBig(info.view_count)} views\n`;
+    if (info.duration) message += `⏱️ Duration: ${formatTimeDuration(info.duration)}\n`;
+    if (info.description) {
+        const desc = info.description.length > 150 ? info.description.substring(0, 150) + '...' : info.description;
         message += `\n📝 ${desc}\n`;
     }
-    
     message += `\n[🔗 View Original](${originalUrl})`;
-    
     return message;
 }
 
@@ -315,62 +288,53 @@ function formatSocialPreviewMessage(info, platform, originalUrl) {
 async function handleSocialMediaPreview(botToken, chatId, messageThreadId, message) {
     const text = message.text;
     const detectedUrls = detectSocialMediaUrls(text);
-    
-    if (detectedUrls.length === 0) {
-        return false;
-    }
-    
-    console.log(`Found ${detectedUrls.length} social media URLs`);
-    
-    // Process each URL (limit to 2 to avoid spam)
+    if (detectedUrls.length === 0) return false;
+
     for (const urlInfo of detectedUrls.slice(0, 2)) {
         try {
-            console.log(`Processing ${urlInfo.platform}: ${urlInfo.url}`);
-            
             const mediaInfo = await extractSocialMediaInfo(urlInfo.url, urlInfo.platform);
-            if (!mediaInfo) {
-                console.log(`Failed to extract info for ${urlInfo.platform}: ${urlInfo.url}`);
-                // Don't send error message, just skip silently
-                continue;
-            }
-            
+            if (!mediaInfo) continue;
             const previewMessage = formatSocialPreviewMessage(mediaInfo, urlInfo.platform, urlInfo.url);
-            
-            // Try to send with media if available
+
             if (mediaInfo.thumbnail) {
                 try {
-                    await sendSocialMediaPhoto(
-                        botToken, 
-                        chatId, 
-                        messageThreadId, 
-                        mediaInfo.thumbnail, 
-                        previewMessage
-                    );
-                } catch (error) {
-                    console.log('Photo failed, sending text only');
+                    await sendSocialMediaPhoto(botToken, chatId, messageThreadId, mediaInfo.thumbnail, previewMessage);
+                } catch {
                     await sendSocialMediaMessage(botToken, chatId, messageThreadId, previewMessage);
                 }
             } else {
                 await sendSocialMediaMessage(botToken, chatId, messageThreadId, previewMessage);
             }
-            
-            // Small delay between multiple URLs
-            if (detectedUrls.length > 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-            
+            await new Promise(r => setTimeout(r, 1000));
         } catch (error) {
             console.error(`Error processing ${urlInfo.platform}:`, error.message);
         }
     }
-    
+
     return true;
 }
 
-// Check if yt-dlp is available
+// yt-dlp availability check
 async function checkYtDlpAvailable() {
-    console.log('yt-dlp-exec is available via npm package');
+    console.log('yt-dlp is available via @devsnek/yt-dlp package');
     return true;
+}
+
+// Helpers
+function fmtBig(num) {
+    if (!num) return '0';
+    if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+    if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+    if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function formatTimeDuration(seconds) {
+    if (!seconds) return '0:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` : `${m}:${s.toString().padStart(2,'0')}`;
 }
 
 // --- ORIGINAL BOT FUNCTIONS ---
