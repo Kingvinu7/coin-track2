@@ -14,77 +14,27 @@ if (!admin.apps.length) {
         console.error("Firebase admin initialization failed:", error);
     }
 }
-
 const db = admin.firestore();
-
-// --- NEW: Social Media Link Replacement Function ---
-function replaceSocialMediaLinks(text) {
-    let modified = text;
-    let hasChanges = false;
-    
-    // Replace Twitter/X links
-    if (modified.includes('x.com') || modified.includes('twitter.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://vxtwitter.com');
-        hasChanges = true;
-    }
-    
-    // Replace Instagram links
-    if (modified.includes('instagram.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?instagram\.com/g, 'https://ddinstagram.com');
-        hasChanges = true;
-    }
-    
-    // Replace TikTok links
-    if (modified.includes('tiktok.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?tiktok\.com/g, 'https://vxtiktok.com');
-        hasChanges = true;
-    }
-    
-    // Replace Reddit links
-    if (modified.includes('reddit.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?reddit\.com/g, 'https://rxddit.com');
-        hasChanges = true;
-    }
-    
-    return { text: modified, changed: hasChanges };
-}
-
-// --- NEW: Edit Message Function for Social Media Links ---
-async function editMessageWithPreview(botToken, chatId, messageId, newText, messageThreadId) {
-    try {
-        const options = {
-            chat_id: parseInt(chatId),
-            message_id: parseInt(messageId),
-            text: newText,
-            parse_mode: 'Markdown',
-            disable_web_page_preview: false // Enable link preview
-        };
-        
-        if (messageThreadId && parseInt(messageThreadId) > 0) {
-            options.message_thread_id = parseInt(messageThreadId);
-        }
-        
-        await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
-        console.log('✅ Message edited with better preview');
-    } catch (error) {
-        console.error('❌ Error editing message:', error.response?.data || error.message);
-    }
-}
 
 // --- Mobile-Friendly Prompt Engineering Functions ---
 function analyzeQuestionAndCreatePrompt(userInput) {
     const input = userInput.toLowerCase();
     let systemPrompt = "";
-    
     // Detect FUN/CASUAL/ROAST questions first
     if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
         systemPrompt = `
 Be a merciless, Deadpool-style roast comedian with zero chill.
+
 Deliver ONE savage, cutting roast (1–2 sentences max).
+
 Make it brutally witty, hilariously cruel, and painfully accurate—but still playful.
+
 A little cuss or mild profanity is allowed for extra bite.
-Always end with "Just kidding!" or a cheeky equivalent.
+
+Always end with “Just kidding!” or a cheeky equivalent.
+
 Keep it under 350 characters.
+
 Push the roast as far as possible while staying funny. `;
     } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') ||
         input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') ||
@@ -152,7 +102,8 @@ Be a helpful, concise assistant:
     }
 
     systemPrompt += `
-CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
+
+CRITICAL MOBILE-FRIE N DLY REQUIREMENTS:
 - Maximum 400 characters total (STRICT LIMIT)
 - Use 4-5 short sentences maximum
 - No markdown formatting (* _ \` [ ] { } etc.)
@@ -161,7 +112,6 @@ CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
 - If you can't fit everything, prioritize most important info
 
 User's question: ${userInput}`;
-
     return systemPrompt;
 }
 
@@ -257,7 +207,6 @@ async function getQuoteImageUrl(message, repliedToMessage) {
                 }
             };
         }
-
         const response = await axios.post('https://bot.lyo.su/quote/generate.webp', payload, {
             responseType: 'arraybuffer', // Request the response as a binary buffer
             timeout: 15000
@@ -310,14 +259,12 @@ async function getCoinDataWithChanges(symbol) {
         console.error('❌ Symbol is required for getCoinDataWithChanges');
         return null;
     }
-
     // Ensure symbol is a string
     const s = String(symbol).toLowerCase().trim();
     if (!s) {
         console.error('❌ Empty symbol after conversion:', symbol);
         return null;
     }
-
     let coinId = priority[s];
     try {
         if (!coinId) {
@@ -332,12 +279,10 @@ async function getCoinDataWithChanges(symbol) {
                 coinId = bestMatch.id;
             }
         }
-
         if (!coinId) {
             console.warn(`⚠️ Could not find a matching ID for symbol: ${s}`);
             return null;
         }
-
         const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
             params: {
                 vs_currency: "usd",
@@ -350,7 +295,6 @@ async function getCoinDataWithChanges(symbol) {
         if (response.data.length > 0) {
             return response.data[0];
         }
-
         return null;
     } catch (e) {
         console.error(`❌ getCoinDataWithChanges failed for ${s}:`, e.message);
@@ -427,7 +371,6 @@ async function getCoinFromDexScreener(address) {
         if (response.data && response.data.pairs && response.data.pairs.length > 0) {
             return response.data.pairs[0];
         }
-
         return null;
     } catch (e) {
         console.error(`❌ getCoinFromDexScreener failed for ${address}:`, e.message);
@@ -442,7 +385,6 @@ async function getLivePriceFromDexScreener(address) {
         if (response.data && response.data.pairs && response.data.pairs.length > 0) {
             return parseFloat(response.data.pairs[0].priceUsd);
         }
-
         return null;
     } catch (e) {
         console.error(`❌ getLivePriceFromDexScreener failed for ${address}:`, e.message);
@@ -457,12 +399,10 @@ function evaluateExpression(expression) {
         if (!sanitizedExpression || /^[+\-*/.]/.test(sanitizedExpression) || /[+\-*/.]$/.test(sanitizedExpression)) {
             return null;
         }
-
         const result = new Function(`return ${sanitizedExpression}`)();
         if (typeof result === 'number' && isFinite(result)) {
             return result;
         }
-
         return null;
     } catch (e) {
         console.error('❌ Calculator evaluation failed:', e.message);
@@ -565,6 +505,7 @@ function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
 
         const compactConfig = encodeURIComponent(JSON.stringify(chartConfig));
         return `https://quickchart.io/chart?c=${compactConfig}&w=600&h=400&backgroundColor=white`;
+
     } catch (error) {
         console.error('❌ Candlestick chart URL generation failed:', error.message);
         // Fallback to simple line chart
@@ -578,13 +519,11 @@ function getChartImageUrl(coinName, historicalData) {
         const maxPoints = 30;
         const step = Math.max(1, Math.floor(historicalData.length / maxPoints));
         const sampledData = historicalData.filter((_, index) => index % step === 0);
-
         const labels = sampledData.map(d => {
             const date = new Date(d[0]);
             return `${date.getMonth() + 1}/${date.getDate()}`;
         });
         const prices = sampledData.map(d => parseFloat(d[1].toFixed(8)));
-
         const chartConfig = {
             type: 'line',
             data: {
@@ -625,7 +564,6 @@ function getChartImageUrl(coinName, historicalData) {
                 }
             }
         };
-
         const compactConfig = encodeURIComponent(JSON.stringify(chartConfig));
         return `https://quickchart.io/chart?c=${compactConfig}&w=400&h=250&backgroundColor=white`;
     } catch (error) {
@@ -654,12 +592,10 @@ function buildReply(coin, amount) {
         const price_change_24h = coin.price_change_percentage_24h_in_currency ?? null;
         const price_change_7d = coin.price_change_percentage_7d_in_currency ?? null;
         const price_change_30d = coin.price_change_percentage_30d_in_currency ?? null;
-
         const lines = [];
         if (amount != null && amount !== 1) {
             lines.push(`${amount} ${coin.symbol.toUpperCase()} = ${fmtPrice(totalUSD)}`);
         }
-
         lines.push(`Price: ${fmtPrice(priceUSD)}`);
         lines.push(`MC: ${fmtBig(mc)}`);
         lines.push(`FDV: ${fdv}`);
@@ -668,7 +604,6 @@ function buildReply(coin, amount) {
         lines.push(`1D: ${fmtChange(price_change_24h)}`);
         lines.push(`7D: ${fmtChange(price_change_7d)}`);
         lines.push(`30D: ${fmtChange(price_change_30d)}`);
-
         return `\`${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\``;
     } catch (error) {
         console.error('❌ buildReply error:', error.message);
@@ -758,46 +693,44 @@ function buildDexScreenerReply(dexScreenerData) {
         const formattedPrice = pair.priceUsd ? fmtPrice(parseFloat(pair.priceUsd)) : 'N/A';
         const change1h = pair.priceChange?.h1;
         const formattedChange1h = change1h ? fmtChange(change1h) : 'N/A';
-
         // Use fmtBig to format marketCap, volume, and liquidity
         const mc = pair.marketCap ? fmtBig(pair.marketCap) : 'N/A';
         const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
         const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
-
         let mexcLink = null;
         if (pair.chainId === 'ethereum' || pair.chainId === 'bsc' || pair.chainId === 'solana') {
             mexcLink = `https://www.mexc.com/exchange/${token.symbol.toUpperCase()}_USDT`;
         }
-
         let mevxLink = null;
         if (pair.chainId === 'ethereum' || pair.chainId === 'solana') {
             mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
         }
-
         let reply =
+
             `💊 \`${token.name}\` (\`${token.symbol}\`)
+
 🔗 CHAIN: \`#${formattedChain}\`
 🔄 DEX PAIR: \`${formattedExchange}\`
+
 💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
 ✨ MARKET CAP: \`$${mc}\`
 🪙 ADDRESS:
+
 \`${token.address}\`
+
 ⚜️ VOLUME: \`$${vol}\`
 🌀 LP: \`$${lp}\`
 `;
-
         let links = `
+
 [DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
 `;
-
         if (mexcLink) {
             links += ` | [MEXC](${mexcLink})`;
         }
-
         if (mevxLink) {
             links += ` | [MEVX](${mevxLink})`;
         }
-
         reply += `${links}`;
         return reply.trim();
     } catch (error) {
@@ -826,13 +759,11 @@ function buildGasReply(gasPrices, ethPrice) {
         if (!gasPrices) {
             return '`Could not retrieve gas prices. Please try again later.`';
         }
-
         const gasLimit = 21000;
         const calculateCost = (gwei, ethPrice) => (gwei * gasLimit) / 10 ** 9 * ethPrice;
         const slowCost = calculateCost(gasPrices.low, ethPrice);
         const averageCost = calculateCost(gasPrices.average, ethPrice);
         const highCost = calculateCost(gasPrices.high, ethPrice);
-
         const lines = [];
         lines.push('Ethereum Gas Prices');
         lines.push('-------------------');
@@ -840,7 +771,6 @@ function buildGasReply(gasPrices, ethPrice) {
         lines.push(`Avg: ${gasPrices.average} Gwei (~${fmtPrice(averageCost)})`);
         lines.push(`Fast: ${gasPrices.high} Gwei (~${fmtPrice(highCost)})`);
         lines.push(`ETH: ${fmtPrice(ethPrice)}`);
-
         return `\`${lines.join('\n')}\``;
     } catch (error) {
         console.error('❌ buildGasReply error:', error.message);
@@ -854,7 +784,6 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
         console.error('❌ Refusing to send an empty message.');
         return;
     }
-
     const baseOptions = {
         chat_id: parseInt(chatId),
         text: text,
@@ -872,7 +801,6 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
         },
         ...options
     };
-
     const trySend = async(opts) => {
         try {
             const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, opts, {
@@ -890,19 +818,19 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
             throw error;
         }
     };
-
     try {
-        let attemptOptions = { ...baseOptions };
+        let attemptOptions = { ...baseOptions
+        };
         if (messageThreadId && parseInt(messageThreadId) > 0) {
             attemptOptions.message_thread_id = parseInt(messageThreadId);
         }
-
         return await trySend(attemptOptions);
     } catch (error) {
         if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
             console.warn('⚠️ Thread not found, attempting to send to main chat.');
             try {
-                const fallbackOptions = { ...baseOptions };
+                const fallbackOptions = { ...baseOptions
+                };
                 delete fallbackOptions.message_thread_id;
                 return await trySend(fallbackOptions);
             } catch (fallbackError) {
@@ -918,6 +846,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
 // --- Send Photo function with timeframe buttons ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '', showTimeframeButtons = false) {
     let replyMarkup;
+
     if (showTimeframeButtons) {
         // Add timeframe selection buttons for chart commands
         replyMarkup = {
@@ -984,17 +913,18 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
     };
 
     try {
-        let attemptOptions = { ...baseOptions };
+        let attemptOptions = { ...baseOptions
+        };
         if (messageThreadId && parseInt(messageThreadId) > 0) {
             attemptOptions.message_thread_id = parseInt(messageThreadId);
         }
-
         return await trySend(attemptOptions);
     } catch (error) {
         if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
             console.warn('⚠️ Thread not found for photo, attempting to send to main chat.');
             try {
-                const fallbackOptions = { ...baseOptions };
+                const fallbackOptions = { ...baseOptions
+                };
                 delete fallbackOptions.message_thread_id;
                 return await trySend(fallbackOptions);
             } catch (fallbackError) {
@@ -1021,7 +951,6 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
             contentType: 'image/webp'
         });
         formData.append('chat_id', chatId);
-
         if (messageThreadId && parseInt(messageThreadId) > 0) {
             formData.append('message_thread_id', messageThreadId);
         }
@@ -1047,8 +976,8 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
 // --- Edit message with topic support and refresh/delete buttons ---
 async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData, showTimeframeButtons = false) {
     const isPhoto = !!photoUrl;
-    let replyMarkup;
 
+    let replyMarkup;
     if (showTimeframeButtons) {
         replyMarkup = {
             inline_keyboard: [
@@ -1104,7 +1033,6 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
-
             await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
         } else {
             let options = { ...baseOptions,
@@ -1113,7 +1041,6 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
-
             await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
         }
     } catch (error) {
@@ -1209,6 +1136,7 @@ async function buildLeaderboardReply(chatId) {
 
         const mainHeader = `*👑 Token Lord Leaderboard*`;
         const groupStats = `
+
 *Group Stats:*
 Period: All Time
 `;
@@ -1293,6 +1221,7 @@ export default async function handler(req, res) {
 
     try {
         const update = req.body;
+
         if (!update || (!update.message && !update.callback_query)) {
             return res.status(200).json({
                 ok: true,
@@ -1315,6 +1244,7 @@ export default async function handler(req, res) {
             // --- Handle timeframe-specific chart requests ---
             if (callbackData.startsWith('chart_1d_') || callbackData.startsWith('chart_7d_') ||
                 callbackData.startsWith('chart_30d_') || callbackData.startsWith('chart_90d_')) {
+
                 const parts = callbackData.split('_');
                 const timeframe = parts[1].toUpperCase(); // 1D, 7D, 30D, 90D
                 const symbol = parts.slice(2).join('_'); // Rejoin in case symbol has underscores
@@ -1364,6 +1294,7 @@ export default async function handler(req, res) {
                                 chat_id: chatId,
                                 message_id: messageId
                             });
+
                             await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartUrl, caption, symbol, true);
                         } catch (deleteError) {
                             console.warn('⚠️ Could not delete message, trying to edit instead');
@@ -1394,6 +1325,7 @@ export default async function handler(req, res) {
                     const dexScreenerData = await getCoinFromDexScreener(address);
                     if (dexScreenerData) {
                         reply = buildDexScreenerReply(dexScreenerData);
+
                         // Get first post information for signature
                         const firstPostInfo = await getFirstPostInfo(address, chatId);
                         if (firstPostInfo) {
@@ -1449,7 +1381,6 @@ export default async function handler(req, res) {
                         if (circulatingSupply1 > 0 && marketCap2 > 0) {
                             theoreticalPrice = marketCap2 / circulatingSupply1;
                         }
-
                         if (theoreticalPrice) {
                             reply = buildCompareReply(coin1, coin2, theoreticalPrice);
                         } else {
@@ -1474,6 +1405,7 @@ export default async function handler(req, res) {
                 }
 
                 await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, photoUrl, originalCommand, showTimeframeButtons);
+
             } else if (callbackData === 'delete_message') {
                 try {
                     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
@@ -1505,15 +1437,8 @@ export default async function handler(req, res) {
         const user = msg.from;
         const chatType = msg.chat.type;
 
-        // --- NEW: Social Media Link Preview Enhancement ---
-        const linkResult = replaceSocialMediaLinks(text);
-        if (linkResult.changed) {
-            console.log('🔄 Detected social media links, replacing with preview-enhanced versions');
-            await editMessageWithPreview(BOT_TOKEN, chatId, messageId, linkResult.text, messageThreadId);
-            return res.status(200).json({ ok: true, message: 'Social media link replaced' });
-        }
-
         // --- Enhanced /que command handler with mobile-friendly responses ---
+               // --- Enhanced /que command handler with mobile-friendly responses ---
         if (text.startsWith('/que')) {
             let prompt = text.substring(4).trim();
 
@@ -1531,7 +1456,7 @@ export default async function handler(req, res) {
                     .replace(/</g, "&lt;")
                     .replace(/>/g, "&gt;")
                     .replace(/"/g, "&quot;")
-                    .replace(/'/g, "&#x27;")
+                    .replace(/'/g, "&#39;")
                     .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
                     .trim();
             }
@@ -1572,6 +1497,7 @@ export default async function handler(req, res) {
                 }
             } catch (err) {
                 console.error("Telegram API error:", err.response?.data || err.message);
+
                 // Fallback error message
                 try {
                     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -1587,6 +1513,7 @@ export default async function handler(req, res) {
 
             return res.status(200).json({ ok: true });
         }
+        
 
         // --- Original message filtering logic ---
         const isCommand = text.startsWith('/') || text.startsWith('.');
@@ -1612,6 +1539,7 @@ export default async function handler(req, res) {
 
                 // Check if this address was posted before in this chat
                 const firstPostInfo = await getFirstPostInfo(text, chatId);
+
                 if (firstPostInfo) {
                     // Address was posted before - use FIRST post information for signature
                     console.log('🔄 Using existing first post info for signature');
@@ -1682,6 +1610,7 @@ export default async function handler(req, res) {
                 if (coinData) {
                     // Try to get OHLC data for candlestick chart (default 30 days)
                     const ohlcData = await getOHLCData(coinData.id, 30);
+
                     if (ohlcData && ohlcData.length > 0) {
                         const chartImageUrl = getCandlestickChartUrl(coinData.name, ohlcData, '30D');
                         await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl,
@@ -1723,7 +1652,6 @@ export default async function handler(req, res) {
                         if (circulatingSupply1 > 0 && marketCap2 > 0) {
                             theoreticalPrice = marketCap2 / circulatingSupply1;
                         }
-
                         if (theoreticalPrice) {
                             const reply = buildCompareReply(coin1, coin2, theoreticalPrice);
                             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
@@ -1741,7 +1669,7 @@ export default async function handler(req, res) {
             } else if (command === 'start') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     '`hey welcome fren! Type /help to know more about the commands.`');
-            } else if (command === 'help') {
+                            } else if (command === 'help') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `*Commands:*
 [amount] [symbol] - Get a crypto price, e.g., \`2 eth\`
@@ -1755,13 +1683,12 @@ export default async function handler(req, res) {
 
 *Other features:*
 - Send a token address to get token info
-- Use simple math, e.g., \`5 * 10\`
-- **NEW**: Auto-enhance social media links (Twitter/X, Instagram, TikTok, Reddit) for better previews`);
-            } else if (command === 'test') {
+- Use simple math, e.g., \`5 * 10\``);
+                
+            }  else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
             }
-
             // Removed automatic coin symbol commands like /btc, /eth, etc.
             // Only specific commands above are handled now
         } else if (isCalculation) {
