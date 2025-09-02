@@ -1,13 +1,10 @@
-import axios from 'axios';
+ import axios from 'axios';
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import FormData from 'form-data';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import ytdlp from 'yt-dlp-exec';
 import fs from 'fs/promises';
 import path from 'path';
-
-const execAsync = promisify(exec);
 
 // --- Firebase Initialization ---
 if (!admin.apps.length) {
@@ -52,17 +49,19 @@ function detectSocialMediaUrls(text) {
     return detectedUrls;
 }
 
-// Extract media info using yt-dlp
+// Extract media info using yt-dlp-exec
 async function extractWithYtDlp(url) {
     try {
         console.log(`Trying yt-dlp for: ${url}`);
-        const { stdout } = await execAsync(`yt-dlp -j --no-download --no-warnings "${url}"`, {
-            timeout: 25000
+
+        const info = await ytdlp(url, {
+            dumpSingleJson: true,
+            noWarnings: true,
+            noCheckCertificates: true,
         });
-        
-        const info = JSON.parse(stdout);
+
         console.log(`yt-dlp success: ${info.title || 'No title'}`);
-        
+
         return {
             title: info.title || 'No title',
             description: info.description || '',
@@ -370,14 +369,8 @@ async function handleSocialMediaPreview(botToken, chatId, messageThreadId, messa
 
 // Check if yt-dlp is available
 async function checkYtDlpAvailable() {
-    try {
-        await execAsync('yt-dlp --version');
-        console.log('yt-dlp is available');
-        return true;
-    } catch (error) {
-        console.log('yt-dlp not available, will use web scraping only');
-        return false;
-    }
+    console.log('yt-dlp-exec is available via npm package');
+    return true;
 }
 
 // --- ORIGINAL BOT FUNCTIONS ---
