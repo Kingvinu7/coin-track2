@@ -49,33 +49,11 @@ function replaceSocialMediaLinks(text) {
     return { text: modified, changed: hasChanges };
 }
 
-// --- NEW: Edit Message Function for Social Media Links ---
-async function editMessageWithPreview(botToken, chatId, messageId, newText, messageThreadId) {
-    try {
-        const options = {
-            chat_id: parseInt(chatId),
-            message_id: parseInt(messageId),
-            text: newText,
-            parse_mode: 'Markdown',
-            disable_web_page_preview: false // Enable link preview
-        };
-        
-        if (messageThreadId && parseInt(messageThreadId) > 0) {
-            options.message_thread_id = parseInt(messageThreadId);
-        }
-        
-        await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
-        console.log('✅ Message edited with better preview');
-    } catch (error) {
-        console.error('❌ Error editing message:', error.response?.data || error.message);
-    }
-}
-
 // --- Mobile-Friendly Prompt Engineering Functions ---
 function analyzeQuestionAndCreatePrompt(userInput) {
     const input = userInput.toLowerCase();
     let systemPrompt = "";
-    
+
     // Detect FUN/CASUAL/ROAST questions first
     if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
         systemPrompt = `
@@ -152,6 +130,7 @@ Be a helpful, concise assistant:
     }
 
     systemPrompt += `
+
 CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
 - Maximum 400 characters total (STRICT LIMIT)
 - Use 4-5 short sentences maximum
@@ -1505,12 +1484,22 @@ export default async function handler(req, res) {
         const user = msg.from;
         const chatType = msg.chat.type;
 
-        // --- NEW: Social Media Link Preview Enhancement ---
+        // --- NEW: Social Media Link Preview Enhancement (FIXED) ---
         const linkResult = replaceSocialMediaLinks(text);
         if (linkResult.changed) {
-            console.log('🔄 Detected social media links, replacing with preview-enhanced versions');
-            await editMessageWithPreview(BOT_TOKEN, chatId, messageId, linkResult.text, messageThreadId);
-            return res.status(200).json({ ok: true, message: 'Social media link replaced' });
+            console.log('🔄 Detected social media links, replying with enhanced preview');
+            
+            // Reply to the original message with enhanced links
+            await sendMessageToTopic(
+                BOT_TOKEN, 
+                chatId, 
+                messageThreadId, 
+                `🔗 **Enhanced Preview:**\n${linkResult.text}`, 
+                'social_media_preview', 
+                { reply_to_message_id: messageId, disable_web_page_preview: false }
+            );
+            
+            return res.status(200).json({ ok: true, message: 'Enhanced preview sent' });
         }
 
         // --- Enhanced /que command handler with mobile-friendly responses ---
@@ -1756,7 +1745,7 @@ export default async function handler(req, res) {
 *Other features:*
 - Send a token address to get token info
 - Use simple math, e.g., \`5 * 10\`
-- **NEW**: Auto-enhance social media links (Twitter/X, Instagram, TikTok, Reddit) for better previews`);
+- **Auto-enhances Twitter/X, Instagram, TikTok, Reddit links for better previews**`);
             } else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
