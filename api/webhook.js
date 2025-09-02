@@ -24,12 +24,12 @@ function getSingleBestAlternative(text) {
     
     // Instagram - use ddinstagram as primary choice
     if (text.includes('instagram.com')) {
-        alternativeUrl = text.replace(/https?:\/\/(www\.)?instagram\.com/g, 'https://ddinstagram.com');
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?instagram\.com/g, 'https://kkinstagram.com');
         hasChanges = true;
     }
     // Twitter/X
     else if (text.includes('x.com') || text.includes('twitter.com')) {
-        alternativeUrl = text.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://vxtwitter.com');
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://fxtwitter.com');
         hasChanges = true;
     }
     // TikTok
