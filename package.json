@@ -13,7 +13,8 @@
     "axios": "^1.6.7",
     "dotenv": "^17.2.1",
     "firebase-admin": "^13.4.0",
-    "node-telegram-bot-api": "^0.64.0"
+    "node-telegram-bot-api": "^0.64.0",
+    "yt-dlp-exec": "^1.0.2"
   },
   "engines": {
     "node": ">=18.0.0"
