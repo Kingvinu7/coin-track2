@@ -17,36 +17,33 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// --- NEW: Social Media Link Replacement Function ---
-function replaceSocialMediaLinks(text) {
-    let modified = text;
+// --- Simple Social Media Link Detection with Single Best Alternative ---
+function getSingleBestAlternative(text) {
+    let alternativeUrl = text;
     let hasChanges = false;
     
-    // Replace Twitter/X links
-    if (modified.includes('x.com') || modified.includes('twitter.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://vxtwitter.com');
+    // Instagram - use ddinstagram as primary choice
+    if (text.includes('instagram.com')) {
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?instagram\.com/g, 'https://ddinstagram.com');
+        hasChanges = true;
+    }
+    // Twitter/X
+    else if (text.includes('x.com') || text.includes('twitter.com')) {
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://vxtwitter.com');
+        hasChanges = true;
+    }
+    // TikTok
+    else if (text.includes('tiktok.com')) {
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?tiktok\.com/g, 'https://vxtiktok.com');
+        hasChanges = true;
+    }
+    // Reddit
+    else if (text.includes('reddit.com')) {
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?reddit\.com/g, 'https://rxddit.com');
         hasChanges = true;
     }
     
-    // Replace Instagram links  
-    if (modified.includes('instagram.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?instagram\.com/g, 'https://ddinstagram.com');
-        hasChanges = true;
-    }
-    
-    // Replace TikTok links
-    if (modified.includes('tiktok.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?tiktok\.com/g, 'https://vxtiktok.com');
-        hasChanges = true;
-    }
-    
-    // Replace Reddit links
-    if (modified.includes('reddit.com')) {
-        modified = modified.replace(/https?:\/\/(www\.)?reddit\.com/g, 'https://rxddit.com');
-        hasChanges = true;
-    }
-    
-    return { text: modified, changed: hasChanges };
+    return { alternativeUrl, hasChanges, original: text };
 }
 
 // --- Mobile-Friendly Prompt Engineering Functions ---
@@ -1488,25 +1485,30 @@ export default async function handler(req, res) {
         const user = msg.from;
         const chatType = msg.chat.type;
 
-        // --- NEW: Social Media Link Preview Enhancement (FINAL VERSION) ---
-        const linkResult = replaceSocialMediaLinks(text);
-        if (linkResult.changed) {
-            console.log('🔄 Detected social media links, sending enhanced preview');
+        // --- NEW: Social Media Link Preview (Clean Single Link Format) ---
+        const linkData = getSingleBestAlternative(text);
+        if (linkData.hasChanges) {
+            console.log('🔄 Detected social media link, sending clean preview');
             
-            // Send only the enhanced link as a reply - clean and simple
+            const senderUsername = user.username || user.first_name || `User${user.id}`;
+            
+            // Create clean message with just one media link + original
+            const formattedMessage = `[Media Link](${linkData.alternativeUrl})\n\n[Original Link](${linkData.original}) sent by @${senderUsername}`;
+            
             await sendMessageToTopic(
                 BOT_TOKEN, 
                 chatId, 
                 messageThreadId, 
-                linkResult.text, // Just the enhanced link (e.g., ddinstagram.com)
-                '', // No callback data - no buttons for clean look
+                formattedMessage,
+                '', // No callback data
                 { 
                     reply_to_message_id: messageId, 
-                    disable_web_page_preview: false // Enable rich preview
+                    disable_web_page_preview: false, // Enable preview for media link
+                    parse_mode: 'Markdown' // Essential for hyperlinks
                 }
             );
             
-            return res.status(200).json({ ok: true, message: 'Enhanced preview sent' });
+            return res.status(200).json({ ok: true, message: 'Clean preview sent' });
         }
 
         // --- Enhanced /que command handler with mobile-friendly responses ---
