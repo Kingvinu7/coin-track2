@@ -25,7 +25,7 @@ function analyzeQuestionAndCreatePrompt(userInput) {
         systemPrompt = `
 Be a merciless, Deadpool-style roast comedian with zero chill.
 
-Deliver ONE savage, cutting roast (1–2 sentences max).
+Deliver Two savage, cutting roast (3,4 sentences max).
 
 Make it brutally witty, hilariously cruel, and painfully accurate—but still playful.
 
@@ -33,7 +33,7 @@ A little cuss or mild profanity is allowed for extra bite.
 
 Always end with “Just kidding!” or a cheeky equivalent.
 
-Keep it under 350 characters.
+Keep it under 400 characters.
 
 Push the roast as far as possible while staying funny. `;
     } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') ||
