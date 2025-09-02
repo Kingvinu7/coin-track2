@@ -1485,23 +1485,30 @@ export default async function handler(req, res) {
         const chatType = msg.chat.type;
 
         // --- NEW: Social Media Link Preview Enhancement (FIXED) ---
-        const linkResult = replaceSocialMediaLinks(text);
-        if (linkResult.changed) {
-            console.log('🔄 Detected social media links, replying with enhanced preview');
-            
-            // Reply to the original message with enhanced links
-            await sendMessageToTopic(
-                BOT_TOKEN, 
-                chatId, 
-                messageThreadId, 
-                `🔗 **Enhanced Preview:**\n${linkResult.text}`, 
-                'social_media_preview', 
-                { reply_to_message_id: messageId, disable_web_page_preview: false }
-            );
-            
-            return res.status(200).json({ ok: true, message: 'Enhanced preview sent' });
+        // --- NEW: Social Media Link Preview Enhancement (MINIMAL) ---
+const linkResult = replaceSocialMediaLinks(text);
+if (linkResult.changed) {
+    console.log('🔄 Detected social media links, sending preview');
+    
+    // Send enhanced link with original embedded at bottom
+    const previewMessage = `${linkResult.text}\n\n${text}`;
+    
+    await sendMessageToTopic(
+        BOT_TOKEN, 
+        chatId, 
+        messageThreadId, 
+        previewMessage, 
+        '', // No callback data
+        { 
+            reply_to_message_id: messageId, 
+            disable_web_page_preview: false,
+            reply_markup: undefined // No buttons
         }
-
+    );
+    
+    return res.status(200).json({ ok: true, message: '.' });
+}
+        
         // --- Enhanced /que command handler with mobile-friendly responses ---
         if (text.startsWith('/que')) {
             let prompt = text.substring(4).trim();
