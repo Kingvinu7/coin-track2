@@ -1493,7 +1493,7 @@ export default async function handler(req, res) {
             const senderUsername = user.username || user.first_name || `User${user.id}`;
             
             // Create clean message with just one media link + original
-            const formattedMessage = `[Media Link](${linkData.alternativeUrl})\n\n[Original Link](${linkData.original}) sent by @${senderUsername}`;
+            const formattedMessage = `Media Link (${linkData.alternativeUrl})\n\nOriginal Link(${linkData.original}) sent by @${senderUsername}`;
             
             await sendMessageToTopic(
                 BOT_TOKEN, 
