@@ -17,17 +17,33 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// --- NEW: Escape Markdown V2 characters for safe Telegram sending ---
+function escapeMarkdownV2(text) {
+    if (!text) return '';
+    // Characters that need escaping in Telegram MarkdownV2
+    const escapeChars = '_*[]()~`>#+-=|{}.!\\';
+    let escaped = '';
+    for (const char of text) {
+        if (escapeChars.includes(char)) {
+            escaped += '\\' + char;
+        } else {
+            escaped += char;
+        }
+    }
+    return escaped;
+}
+
 // --- Simple Social Media Link Detection with Single Best Alternative ---
 function getSingleBestAlternative(text) {
     let alternativeUrl = text;
     let hasChanges = false;
     
-    // Instagram - use ddinstagram as primary choice
+    // Instagram - use kkinstagram.com as primary choice
     if (text.includes('instagram.com')) {
         alternativeUrl = text.replace(/https?:\/\/(www\.)?instagram\.com/g, 'https://kkinstagram.com');
         hasChanges = true;
     }
-    // Twitter/X
+    // Twitter/X - use i.fxtwitter.com for instant view
     else if (text.includes('x.com') || text.includes('twitter.com')) {
         alternativeUrl = text.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://i.fxtwitter.com');
         hasChanges = true;
@@ -702,7 +718,8 @@ function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     const emoji = currentPriceChange1h > 0 ? '😈' : '😡';
     const formattedMC = fmtBig(firstPostData.firstMarketCap);
     const telegramLink = `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${firstPostData.firstMessageId}`;
-    const usernameLink = `[@${firstPostData.firstUsername}](${telegramLink})`;
+    const escapedUsername = escapeMarkdownV2(firstPostData.firstUsername);
+    const usernameLink = `[@${escapedUsername}](${telegramLink})`;
 
     // Handle timestamp properly
     let timestampDate;
@@ -1288,7 +1305,7 @@ export default async function handler(req, res) {
             const messageThreadId = callbackQuery.message.message_thread_id;
             const callbackData = callbackQuery.data;
 
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            await axios.post(`https://api.telegram.org/bot/${BOT_TOKEN}/answerCallbackQuery`, {
                 callback_query_id: callbackQuery.id
             });
 
@@ -1491,9 +1508,10 @@ export default async function handler(req, res) {
             console.log('🔄 Detected social media link, sending clean preview');
             
             const senderUsername = user.username || user.first_name || `User${user.id}`;
+            const escapedUsername = escapeMarkdownV2(senderUsername);
             
             // Create clean message with just one media link + original
-            const formattedMessage = `Media Link (${linkData.alternativeUrl})\n\nOriginal Link(${linkData.original}) sent by @${senderUsername}`;
+            const formattedMessage = `[Media Link](${linkData.alternativeUrl})\n\n[Original Link](${linkData.original}) sent by @${escapedUsername}`;
             
             await sendMessageToTopic(
                 BOT_TOKEN, 
