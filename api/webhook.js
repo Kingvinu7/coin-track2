@@ -29,7 +29,7 @@ function getSingleBestAlternative(text) {
     }
     // Twitter/X
     else if (text.includes('x.com') || text.includes('twitter.com')) {
-        alternativeUrl = text.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://fxtwitter.com');
+        alternativeUrl = text.replace(/https?:\/\/(www\.)?(x\.com|twitter\.com)/g, 'https://i.fxtwitter.com');
         hasChanges = true;
     }
     // TikTok
