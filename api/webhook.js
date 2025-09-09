@@ -1817,7 +1817,7 @@ export default async function handler(req, res) {
         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, 'multi-token');
           }
         }
-     }
+     
 
         return res.status(200).json({
             ok: true
