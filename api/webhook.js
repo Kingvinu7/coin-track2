@@ -1788,25 +1788,36 @@ export default async function handler(req, res) {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
             }
         } else if (isCoinCheck) {
-            const m = text.toLowerCase().match(re);
-            let amount, symbol;
-            if (m[1] && m[2]) {
-                amount = parseFloat(m[1]);
-                symbol = m[2];
-            } else if (m[3] && m[4]) {
-                symbol = m[3];
-                amount = parseFloat(m[4]);
-            }
-
-            if (amount && symbol) {
-                const coin = await getCoinDataWithChanges(symbol);
-                if (coin) {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, buildReply(coin, amount), symbol);
-                } else {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, symbol);
-                }
-            }
+    // Find all matches globally
+    const matches = text.toLowerCase().matchAll(/(?:^|\s)(\d+(?:\.\d+)?)\s*([a-z]+)|(?:^|\s)([a-z]+)\s*(\d+(?:\.\d+)?)/g);
+    const tokensToFetch = [];
+    for (const m of matches) {
+        let amount, symbol;
+        if (m[1] && m[2]) {
+            amount = parseFloat(m[1]);
+            symbol = m[2];
+        } else if (m[3] && m[4]) {
+            symbol = m[3];
+            amount = parseFloat(m[4]);
         }
+        if (symbol) {
+            tokensToFetch.push({ amount, symbol });
+        }
+    }
+    if (tokensToFetch.length > 0) {
+        const replies = await Promise.all(tokensToFetch.map(async (token) => {
+            const coin = await getCoinDataWithChanges(token.symbol);
+            if (coin) {
+                return buildReply(coin, token.amount);
+            } else {
+                return `\`Coin "${token.symbol.toUpperCase()}" not found\``;
+            }
+        }));
+        const combinedReply = replies.join('\n\n');
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, 'multi-token');
+          }
+        }
+     }
 
         return res.status(200).json({
             ok: true
