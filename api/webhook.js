@@ -1457,37 +1457,85 @@ export default async function handler(req, res) {
                     }
                 } else if (originalCommand.startsWith('leaderboard')) {
                     reply = await buildLeaderboardReply(chatId);
-                } else if (originalCommand.startsWith('price:')) {
-                    const [, symbol, amountStr] = originalCommand.split(':');
-                    const amount = parseFloat(amountStr) || 1;
-                    const coin = await getCoinDataWithChanges(symbol);
-                    if (coin) {
-                        reply = buildReply(coin, amount);
-                    } else {
-                        reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
-                    }
-                } else if (originalCommand.startsWith('multi:')) {
-                    const multiStr = originalCommand.substring('multi:'.length);
-                    const pairs = multiStr.split(',');
-                    const tokens = pairs.map(p => {
-                        const [amountStr, symbol] = p.split(':');
-                        return { amount: parseFloat(amountStr), symbol };
+                    await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
+                    return res.status(200).json({
+                        ok: true
                     });
-                    const replies = await Promise.all(tokens.map(async t => {
-                        const coin = await getCoinDataWithChanges(t.symbol);
-                        if (coin) {
-                            return buildReply(coin, t.amount);
-                        } else {
-                            return `\`Coin "${t.symbol.toUpperCase()}" not found\``;
+                }
+                // FIXED: Enhanced multi-token refresh handler
+                else if (originalCommand.startsWith('multi_')) {
+                    const tokensString = originalCommand.substring('multi_'.length);
+                    const tokenPairs = tokensString.split('|');
+                    
+                    const tokensToFetch = tokenPairs.map(pair => {
+                        const [amount, symbol] = pair.split('_');
+                        return { amount: parseFloat(amount), symbol: symbol };
+                    });
+                    
+                    console.log(`🔄 Refreshing ${tokensToFetch.length} tokens:`, tokensToFetch);
+                    
+                    // Fetch all coin data concurrently
+                    const coinPromises = tokensToFetch.map(async (token) => {
+                        try {
+                            const coin = await getCoinDataWithChanges(token.symbol);
+                            if (coin) {
+                                return {
+                                    success: true,
+                                    reply: buildReply(coin, token.amount),
+                                    symbol: token.symbol
+                                };
+                            } else {
+                                return {
+                                    success: false,
+                                    reply: `\`Coin "${token.symbol.toUpperCase()}" not found\``,
+                                    symbol: token.symbol
+                                };
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error refreshing ${token.symbol}:`, error.message);
+                            return {
+                                success: false,
+                                reply: `\`Error refreshing "${token.symbol.toUpperCase()}"\``,
+                                symbol: token.symbol
+                            };
                         }
-                    }));
-                    reply = replies.join('\n\n');
-                } else {
-                    const coin = await getCoinDataWithChanges(originalCommand);
-                    if (coin) {
-                        reply = buildReply(coin, 1);
+                    });
+                    
+                    const results = await Promise.all(coinPromises);
+                    reply = results.map(result => result.reply).join('\n\n');
+                    
+                    console.log(`✅ Refreshed multi-token reply with ${results.length} tokens`);
+                }
+                // Handle single token refresh (preserve amount)
+                else {
+                    // Check if it's in format "amount_symbol" (e.g., "12_btc")
+                    if (originalCommand.includes('_')) {
+                        const [amountStr, symbol] = originalCommand.split('_');
+                        const amount = parseFloat(amountStr);
+                        if (!isNaN(amount) && symbol) {
+                            const coin = await getCoinDataWithChanges(symbol);
+                            if (coin) {
+                                reply = buildReply(coin, amount);
+                            } else {
+                                reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
+                            }
+                        } else {
+                            // Fallback to regular symbol lookup
+                            const coin = await getCoinDataWithChanges(originalCommand);
+                            if (coin) {
+                                reply = buildReply(coin, 1);
+                            } else {
+                                reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+                            }
+                        }
                     } else {
-                        reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+                        // Regular single token without amount
+                        const coin = await getCoinDataWithChanges(originalCommand);
+                        if (coin) {
+                            reply = buildReply(coin, 1);
+                        } else {
+                            reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+                        }
                     }
                 }
 
@@ -1625,18 +1673,16 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
 
-        // --- Original message filtering logic ---
+        // --- Updated message filtering logic for multi-token support ---
         const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
         const isCalculation = mathRegex.test(text);
-        const trimmedText = text.trim().toLowerCase();
-        const coinRegex = /(?:(\d+(?:\.\d+)?)\s*)?([a-z]+)(?:\s*(\d+(?:\.\d+)?))?/g;
-        const coinMatches = trimmedText.matchAll(coinRegex);
-        const matchArray = Array.from(coinMatches);
-        const filteredMatches = matchArray.filter(m => m[1] || m[3]);
-        const concatenated = filteredMatches.map(m => m[0].replace(/\s+/g, '')).join('');
-        const trimmedNoSpace = trimmedText.replace(/\s+/g, '');
-        const isCoinCheck = filteredMatches.length > 0 && concatenated === trimmedNoSpace;
+        
+        // FIXED: Updated regex for multi-token support
+        const tokenPattern = /(?:^|\s)(?:(\d+(?:\.\d+)?)\s*([a-z]+)|([a-z]+)\s*(\d+(?:\.\d+)?))/gi;
+        const isCoinCheck = tokenPattern.test(text.toLowerCase());
+        tokenPattern.lastIndex = 0; // Reset regex for actual processing
+        
         const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
         if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
@@ -1799,6 +1845,7 @@ export default async function handler(req, res) {
 *Other features:*
 - Send a token address to get token info
 - Use simple math, e.g., \`5 * 10\`
+- **Multi-token support**: \`1 eth 2 btc 0.5 doge\`
 - **Auto-enhances Twitter/X, Instagram, TikTok, Reddit links for better previews**`);
             } else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
@@ -1814,36 +1861,75 @@ export default async function handler(req, res) {
             } else {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
             }
-        } else if (isCoinCheck) {
-            const tokensToFetch = filteredMatches.map(m => {
-                const symbol = m[2];
-                const amountStr = m[1] || m[3];
-                const amount = parseFloat(amountStr);
-                return { symbol, amount };
-            });
-
-            const replies = await Promise.all(tokensToFetch.map(async t => {
-                const coin = await getCoinDataWithChanges(t.symbol);
-                if (coin) {
-                    return buildReply(coin, t.amount);
-                } else {
-                    return `\`Coin "${t.symbol.toUpperCase()}" not found\``;
+        } 
+        // FIXED: Enhanced multi-token coin check handling
+        else if (isCoinCheck) {
+            const tokensToFetch = [];
+            let match;
+            
+            while ((match = tokenPattern.exec(text.toLowerCase())) !== null) {
+                let amount, symbol;
+                
+                if (match[1] && match[2]) {
+                    // Pattern: "1 eth"
+                    amount = parseFloat(match[1]);
+                    symbol = match[2].toLowerCase();
+                } else if (match[3] && match[4]) {
+                    // Pattern: "eth 1"
+                    symbol = match[3].toLowerCase();
+                    amount = parseFloat(match[4]);
                 }
-            }));
-
-            const combinedReply = replies.join('\n\n');
-            let callbackData = '';
-            if (tokensToFetch.length === 1) {
-                const t = tokensToFetch[0];
-                callbackData = `price:${t.symbol}:${t.amount}`;
-            } else {
-                const multiStr = tokensToFetch.map(t => `${t.amount}:${t.symbol}`).join(',');
-                if (multiStr.length < 50) {
-                    callbackData = `multi:${multiStr}`;
+                
+                if (symbol && amount && !isNaN(amount)) {
+                    tokensToFetch.push({ amount, symbol });
                 }
             }
-
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, callbackData);
+            
+            if (tokensToFetch.length > 0) {
+                console.log(`🔍 Found ${tokensToFetch.length} tokens to fetch:`, tokensToFetch);
+                
+                // Fetch all coin data concurrently for better performance
+                const coinPromises = tokensToFetch.map(async (token) => {
+                    try {
+                        const coin = await getCoinDataWithChanges(token.symbol);
+                        if (coin) {
+                            return {
+                                success: true,
+                                reply: buildReply(coin, token.amount),
+                                symbol: token.symbol,
+                                amount: token.amount
+                            };
+                        } else {
+                            return {
+                                success: false,
+                                reply: `\`Coin "${token.symbol.toUpperCase()}" not found\``,
+                                symbol: token.symbol,
+                                amount: token.amount
+                            };
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error fetching ${token.symbol}:`, error.message);
+                        return {
+                            success: false,
+                            reply: `\`Error fetching "${token.symbol.toUpperCase()}"\``,
+                            symbol: token.symbol,
+                            amount: token.amount
+                        };
+                    }
+                });
+                
+                const results = await Promise.all(coinPromises);
+                
+                // Combine all replies into a single message
+                const combinedReply = results.map(result => result.reply).join('\n\n');
+                
+                // FIXED: Create callback data that preserves amounts for refresh functionality
+                const symbolsForCallback = tokensToFetch.map(t => `${t.amount}_${t.symbol}`).join('|');
+                
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, `multi_${symbolsForCallback}`);
+                
+                console.log(`✅ Sent multi-token reply with ${results.length} tokens`);
+            }
         }
 
         return res.status(200).json({
