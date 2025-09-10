@@ -1461,15 +1461,6 @@ export default async function handler(req, res) {
                     return res.status(200).json({
                         ok: true
                     });
-                } else if (originalCommand.startsWith('price:')) {
-                    const [, symbol, amountStr] = originalCommand.split(':');
-                    const amount = parseFloat(amountStr) || 1;
-                    const coin = await getCoinDataWithChanges(symbol);
-                    if (coin) {
-                        reply = buildReply(coin, amount);
-                    } else {
-                        reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
-                    }
                 } else {
                     const coin = await getCoinDataWithChanges(originalCommand);
                     if (coin) {
@@ -1617,13 +1608,8 @@ export default async function handler(req, res) {
         const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
         const isCalculation = mathRegex.test(text);
-        const trimmedText = text.trim().toLowerCase();
-        const coinRegex = /(?:(\d+(?:\.\d+)?)\s*)?([a-z]+)(?:\s*(\d+(?:\.\d+)?))?/g;
-        const coinMatches = trimmedText.matchAll(coinRegex);
-        const matchArray = Array.from(coinMatches);
-        const concatenated = matchArray.map(m => m[0].replace(/\s+/g, '')).join('');
-        const trimmedNoSpace = trimmedText.replace(/\s+/g, '');
-        const isCoinCheck = matchArray.length > 0 && concatenated === trimmedNoSpace;
+        const re = /^(\d*\.?\d+)\s+([a-zA-Z]+)$|^([a-zA-Z]+)\s+(\d*\.?\d+)$/;
+        const isCoinCheck = re.test(text);
         const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
         if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
@@ -1802,30 +1788,36 @@ export default async function handler(req, res) {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
             }
         } else if (isCoinCheck) {
-            const tokensToFetch = matchArray.map(m => {
-                const symbol = m[2];
-                const amount = parseFloat(m[1] || m[3]) || 1;
-                return { symbol, amount };
-            });
-
-            const replies = await Promise.all(tokensToFetch.map(async t => {
-                const coin = await getCoinDataWithChanges(t.symbol);
-                if (coin) {
-                    return buildReply(coin, t.amount);
-                } else {
-                    return `\`Coin "${t.symbol.toUpperCase()}" not found\``;
-                }
-            }));
-
-            const combinedReply = replies.join('\n\n');
-            let callbackData = '';
-            if (tokensToFetch.length === 1) {
-                const t = tokensToFetch[0];
-                callbackData = `price:${t.symbol}:${t.amount}`;
-            }
-
-            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, callbackData);
+    // Find all matches globally
+    const matches = text.toLowerCase().matchAll(/(?:^|\s)(\d+(?:\.\d+)?)\s*([a-z]+)|(?:^|\s)([a-z]+)\s*(\d+(?:\.\d+)?)/g);
+    const tokensToFetch = [];
+    for (const m of matches) {
+        let amount, symbol;
+        if (m[1] && m[2]) {
+            amount = parseFloat(m[1]);
+            symbol = m[2];
+        } else if (m[3] && m[4]) {
+            symbol = m[3];
+            amount = parseFloat(m[4]);
         }
+        if (symbol) {
+            tokensToFetch.push({ amount, symbol });
+        }
+    }
+    if (tokensToFetch.length > 0) {
+        const replies = await Promise.all(tokensToFetch.map(async (token) => {
+            const coin = await getCoinDataWithChanges(token.symbol);
+            if (coin) {
+                return buildReply(coin, token.amount);
+            } else {
+                return `\`Coin "${token.symbol.toUpperCase()}" not found\``;
+            }
+        }));
+        const combinedReply = replies.join('\n\n');
+        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, 'multi-token');
+          }
+        }
+     
 
         return res.status(200).json({
             ok: true
