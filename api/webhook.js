@@ -1567,7 +1567,7 @@ export default async function handler(req, res) {
 
         // FIXED: Updated message filtering logic
         const isCommand = text.startsWith('/') || text.startsWith('.');
-        const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
+        const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)+)$/;
         const isCalculation = mathRegex.test(text);
         
         // FIXED: Precise coin detection - only "1 eth" format, not "1eth"
