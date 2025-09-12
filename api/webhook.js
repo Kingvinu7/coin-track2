@@ -965,26 +965,46 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
 
     try {
         if (isPhoto) {
-            let options = { ...baseOptions, photo: photoUrl, caption: text };
+            // For photo messages, edit caption
+            let options = { ...baseOptions, caption: text };
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
 
-            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
+            const response = await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options, {
+                timeout: 10000,
+                headers: { 'Content-Type': 'application/json' }
+            });
+            console.log('✅ Successfully edited photo caption');
+            return response.data;
         } else {
+            // For text messages, edit text
             let options = { ...baseOptions, text: text };
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
 
-            await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options);
+            const response = await axios.post(`https://api.telegram.org/bot${botToken}/editMessageText`, options, {
+                timeout: 10000,
+                headers: { 'Content-Type': 'application/json' }
+            });
+            console.log('✅ Successfully edited message text');
+            return response.data;
         }
     } catch (error) {
         if (error.response?.data?.description?.includes('message is not modified')) {
             console.log('✅ Message content is identical, no edit needed.');
+        } else if (error.response?.status === 400 && error.response?.data?.description?.includes('message to edit not found')) {
+            console.error('❌ Message to edit not found - it may have been deleted');
         } else {
-            console.error('❌ Error editing message:', error.response?.data || error.message);
+            console.error('❌ Error editing message:', {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                message: error.message
+            });
         }
+        return null;
     }
 }
 
@@ -1201,9 +1221,13 @@ export default async function handler(req, res) {
             const messageThreadId = callbackQuery.message.message_thread_id;
             const callbackData = callbackQuery.data;
 
-            await axios.post(`https://api.telegram.org/bot/${BOT_TOKEN}/answerCallbackQuery`, {
-                callback_query_id: callbackQuery.id
-            });
+            try {
+                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+                    callback_query_id: callbackQuery.id
+                });
+            } catch (error) {
+                console.error('❌ Error answering callback query:', error.message);
+            }
 
             // Handle timeframe-specific chart requests
             if (callbackData.startsWith('chart_1d_') || callbackData.startsWith('chart_7d_') ||
@@ -1241,13 +1265,18 @@ export default async function handler(req, res) {
 
                     if (chartUrl) {
                         try {
-                            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
-                                chat_id: chatId,
-                                message_id: messageId
+                            const deleteResponse = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+                                chat_id: parseInt(chatId),
+                                message_id: parseInt(messageId)
+                            }, {
+                                timeout: 10000,
+                                headers: { 'Content-Type': 'application/json' }
                             });
+                            console.log('✅ Successfully deleted old chart message');
+                            
                             await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartUrl, caption, symbol, true);
                         } catch (deleteError) {
-                            console.warn('⚠️ Could not delete message, trying to edit instead');
+                            console.warn('⚠️ Could not delete message, trying to edit instead:', deleteError.message);
                             await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, chartUrl, symbol, true);
                         }
                     } else {
@@ -1407,12 +1436,21 @@ export default async function handler(req, res) {
                 await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, photoUrl, originalCommand, showTimeframeButtons);
             } else if (callbackData === 'delete_message') {
                 try {
-                    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
-                        chat_id: chatId,
-                        message_id: messageId
+                    const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+                        chat_id: parseInt(chatId),
+                        message_id: parseInt(messageId)
+                    }, {
+                        timeout: 10000,
+                        headers: { 'Content-Type': 'application/json' }
                     });
+                    console.log('✅ Successfully deleted message');
                 } catch (error) {
-                    console.error('❌ Error deleting message:', error.message);
+                    console.error('❌ Error deleting message:', {
+                        status: error.response?.status,
+                        statusText: error.response?.statusText,
+                        data: error.response?.data,
+                        message: error.message
+                    });
                 }
             }
 
