@@ -469,12 +469,10 @@ function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
             throw new Error('No OHLC data provided');
         }
 
-        // Sample data to avoid too many points
         const maxPoints = 50;
         const step = Math.max(1, Math.floor(ohlcData.length / maxPoints));
         const sampledData = ohlcData.filter((_, index) => index % step === 0);
 
-        // Convert OHLC data to line chart with high/low bands since QuickChart doesn't support candlestick
         const labels = sampledData.map(candle => {
             const date = new Date(candle[0]);
             return timeframe === '1D' ?
@@ -482,9 +480,9 @@ function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
                 `${date.getMonth() + 1}/${date.getDate()}`;
         });
 
-        const prices = sampledData.map(candle => parseFloat(candle[4].toFixed(8))); // Close prices
-        const highs = sampledData.map(candle => parseFloat(candle[2].toFixed(8))); // High prices
-        const lows = sampledData.map(candle => parseFloat(candle[3].toFixed(8))); // Low prices
+        const prices = sampledData.map(candle => parseFloat(candle[4].toFixed(8)));
+        const highs = sampledData.map(candle => parseFloat(candle[2].toFixed(8)));
+        const lows = sampledData.map(candle => parseFloat(candle[3].toFixed(8)));
 
         const chartConfig = {
             type: 'line',
@@ -522,36 +520,15 @@ function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
                     title: {
                         display: true,
                         text: `${coinName} - ${timeframe} OHLC Chart`,
-                        font: {
-                            size: 16
-                        }
+                        font: { size: 16 }
                     },
-                    legend: {
-                        display: true,
-                        position: 'bottom'
-                    }
+                    legend: { display: true, position: 'bottom' }
                 },
                 scales: {
-                    x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: 'Time'
-                        }
-                    },
-                    y: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: 'Price (USD)'
-                        },
-                        beginAtZero: false
-                    }
+                    x: { display: true, title: { display: true, text: 'Time' }},
+                    y: { display: true, title: { display: true, text: 'Price (USD)' }, beginAtZero: false }
                 },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                }
+                interaction: { intersect: false, mode: 'index' }
             }
         };
 
@@ -559,12 +536,10 @@ function getCandlestickChartUrl(coinName, ohlcData, timeframe) {
         return `https://quickchart.io/chart?c=${compactConfig}&w=600&h=400&backgroundColor=white`;
     } catch (error) {
         console.error('❌ Candlestick chart URL generation failed:', error.message);
-        // Fallback to simple line chart
         return getChartImageUrl(coinName, ohlcData.map(candle => [candle[0], candle[4]]));
     }
 }
 
-// --- Generate QuickChart URL (fallback line chart) ---
 function getChartImageUrl(coinName, historicalData) {
     try {
         const maxPoints = 30;
@@ -581,39 +556,15 @@ function getChartImageUrl(coinName, historicalData) {
             type: 'line',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: `${coinName} Price`,
-                    data: prices,
-                    fill: false,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    borderWidth: 2,
-                    pointRadius: 1,
-                }, ],
+                datasets: [{ label: `${coinName} Price`, data: prices, fill: false, borderColor: 'rgb(75, 192, 192)', tension: 0.1, borderWidth: 2, pointRadius: 1 }]
             },
             options: {
                 responsive: true,
-                title: {
-                    display: true,
-                    text: `${coinName} - 30 Days`,
-                    fontSize: 14,
-                },
-                legend: {
-                    display: false
-                },
+                title: { display: true, text: `${coinName} - 30 Days`, fontSize: 14 },
+                legend: { display: false },
                 scales: {
-                    xAxes: [{
-                        display: true,
-                        scaleLabel: {
-                            display: false
-                        }
-                    }],
-                    yAxes: [{
-                        display: true,
-                        scaleLabel: {
-                            display: false
-                        }
-                    }]
+                    xAxes: [{ display: true, scaleLabel: { display: false }}],
+                    yAxes: [{ display: true, scaleLabel: { display: false }}]
                 }
             }
         };
@@ -622,19 +573,10 @@ function getChartImageUrl(coinName, historicalData) {
         return `https://quickchart.io/chart?c=${compactConfig}&w=400&h=250&backgroundColor=white`;
     } catch (error) {
         console.error('❌ Chart URL generation failed:', error.message);
-        return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
-            type: 'line',
-            data: {
-                labels: ['Error'],
-                datasets: [{
-                    data: [0]
-                }]
-            }
-        }))}&w=400&h=250`;
+        return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({type:'line',data:{labels:['Error'],datasets:[{data:[0]}]}}))}&w=400&h=250`;
     }
 }
 
-// --- Build price reply with monospace formatting ---
 function buildReply(coin, amount) {
     try {
         const priceUSD = coin.current_price ?? 0;
@@ -668,7 +610,6 @@ function buildReply(coin, amount) {
     }
 }
 
-// --- NEW: Check if address was posted before and get first post info ---
 async function getFirstPostInfo(address, chatId) {
     try {
         const snapshot = await db.collection('first_posts')
@@ -691,7 +632,6 @@ async function getFirstPostInfo(address, chatId) {
     }
 }
 
-// --- NEW: Store first post information ---
 async function storeFirstPostInfo(address, chatId, username, marketCap, timestamp, messageId, symbol) {
     try {
         const docRef = db.collection('first_posts').doc();
@@ -713,7 +653,6 @@ async function storeFirstPostInfo(address, chatId, username, marketCap, timestam
     }
 }
 
-// --- MODIFIED: Build the signature line using FIRST POST information ---
 function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     const emoji = currentPriceChange1h > 0 ? '😈' : '😡';
     const formattedMC = fmtBig(firstPostData.firstMarketCap);
@@ -721,7 +660,6 @@ function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     const escapedUsername = escapeMarkdownV2(firstPostData.firstUsername);
     const usernameLink = `[@${escapedUsername}](${telegramLink})`;
 
-    // Handle timestamp properly
     let timestampDate;
     if (firstPostData.firstTimestamp && typeof firstPostData.firstTimestamp.toDate === 'function') {
         timestampDate = firstPostData.firstTimestamp.toDate();
@@ -740,19 +678,16 @@ function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ ${formattedTime} ]`;
 }
 
-// --- Build DexScreener price reply with monospace formatting and links ---
 function buildDexScreenerReply(dexScreenerData) {
     try {
         const token = dexScreenerData.baseToken;
         const pair = dexScreenerData;
-        const formattedAddress = `${token.address.substring(0, 3)}...${token.address.substring(token.address.length - 4)}`;
         const formattedChain = pair.chainId.toUpperCase();
         const formattedExchange = pair.dexId.toUpperCase();
         const formattedPrice = pair.priceUsd ? fmtPrice(parseFloat(pair.priceUsd)) : 'N/A';
         const change1h = pair.priceChange?.h1;
         const formattedChange1h = change1h ? fmtChange(change1h) : 'N/A';
 
-        // Use fmtBig to format marketCap, volume, and liquidity
         const mc = pair.marketCap ? fmtBig(pair.marketCap) : 'N/A';
         const vol = pair.volume?.h24 ? fmtBig(pair.volume.h24) : 'N/A';
         const lp = pair.liquidity?.usd ? fmtBig(pair.liquidity.usd) : 'N/A';
@@ -767,8 +702,7 @@ function buildDexScreenerReply(dexScreenerData) {
             mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
         }
 
-        let reply =
-            `💊 \`${token.name}\` (\`${token.symbol}\`)
+        let reply = `💊 \`${token.name}\` (\`${token.symbol}\`)
 🔗 CHAIN: \`#${formattedChain}\`
 🔄 DEX PAIR: \`${formattedExchange}\`
 💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
@@ -779,9 +713,7 @@ function buildDexScreenerReply(dexScreenerData) {
 🌀 LP: \`$${lp}\`
 `;
 
-        let links = `
-[DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})
-`;
+        let links = `\n[DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})`;
 
         if (mexcLink) {
             links += ` | [MEXC](${mexcLink})`;
@@ -799,7 +731,6 @@ function buildDexScreenerReply(dexScreenerData) {
     }
 }
 
-// --- Build comparison reply ---
 function buildCompareReply(coin1, coin2, theoreticalPrice) {
     try {
         const formattedPrice = fmtPrice(theoreticalPrice);
@@ -813,7 +744,6 @@ function buildCompareReply(coin1, coin2, theoreticalPrice) {
     }
 }
 
-// --- Build gas price reply ---
 function buildGasReply(gasPrices, ethPrice) {
     try {
         if (!gasPrices) {
@@ -841,7 +771,6 @@ function buildGasReply(gasPrices, ethPrice) {
     }
 }
 
-// --- Send message with topic support and refresh/delete buttons ---
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callbackData = '', options = {}) {
     if (!text || text.trim() === '') {
         console.error('❌ Refusing to send an empty message.');
@@ -855,7 +784,6 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
         ...options
     };
 
-    // Only add reply markup if callbackData is provided (not for social media previews)
     if (callbackData) {
         baseOptions.reply_markup = {
             inline_keyboard: [
@@ -874,9 +802,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
         try {
             const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, opts, {
                 timeout: 10000,
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
             return response.data;
         } catch (error) {
@@ -912,45 +838,20 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
     }
 }
 
-// --- Send Photo function with timeframe buttons ---
 async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, caption = '', callbackData = '', showTimeframeButtons = false) {
     let replyMarkup;
     if (showTimeframeButtons) {
-        // Add timeframe selection buttons for chart commands
         replyMarkup = {
             inline_keyboard: [
-                [{
-                    text: '1D',
-                    callback_data: `chart_1d_${callbackData}`
-                }, {
-                    text: '7D',
-                    callback_data: `chart_7d_${callbackData}`
-                }, {
-                    text: '30D',
-                    callback_data: `chart_30d_${callbackData}`
-                }, {
-                    text: '90D',
-                    callback_data: `chart_90d_${callbackData}`
-                }],
-                [{
-                    text: '🔄 Refresh',
-                    callback_data: `refresh_chart_${callbackData}`
-                }, {
-                    text: '🗑️ Delete',
-                    callback_data: 'delete_message'
-                }]
+                [{text: '1D', callback_data: `chart_1d_${callbackData}`}, {text: '7D', callback_data: `chart_7d_${callbackData}`}, 
+                 {text: '30D', callback_data: `chart_30d_${callbackData}`}, {text: '90D', callback_data: `chart_90d_${callbackData}`}],
+                [{text: '🔄 Refresh', callback_data: `refresh_chart_${callbackData}`}, {text: '🗑️ Delete', callback_data: 'delete_message'}]
             ]
         };
     } else {
         replyMarkup = {
             inline_keyboard: [
-                [{
-                    text: '🔄 Refresh',
-                    callback_data: `refresh_${callbackData}`
-                }, {
-                    text: '🗑️ Delete',
-                    callback_data: 'delete_message'
-                }]
+                [{text: '🔄 Refresh', callback_data: `refresh_${callbackData}`}, {text: '🗑️ Delete', callback_data: 'delete_message'}]
             ]
         };
     }
@@ -967,9 +868,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
         try {
             const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendPhoto`, opts, {
                 timeout: 15000,
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
             return response.data;
         } catch (error) {
@@ -1004,7 +903,6 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
     }
 }
 
-// --- NEW: Send sticker with a dedicated function ---
 async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuffer) {
     if (!stickerBuffer) {
         console.error('❌ Refusing to send an empty sticker buffer.');
@@ -1025,14 +923,11 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
 
         const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendSticker`, formData, {
             timeout: 15000,
-            headers: {
-                'Content-Type': `multipart/form-data; boundary=${formData._boundary}`
-            },
+            headers: { 'Content-Type': `multipart/form-data; boundary=${formData._boundary}` }
         });
         console.log('✅ Sticker sent successfully:', response.data);
     } catch (error) {
         console.error('❌ Failed to send sticker:', error.response?.data?.description || error.message);
-        // Fallback to text message
         try {
             await sendMessageToTopic(botToken, chatId, messageThreadId, '`Failed to send sticker. Please try again later.`');
         } catch (fallbackError) {
@@ -1041,7 +936,6 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
     }
 }
 
-// --- Edit message with topic support and refresh/delete buttons ---
 async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData, showTimeframeButtons = false) {
     const isPhoto = !!photoUrl;
     let replyMarkup;
@@ -1049,38 +943,15 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
     if (showTimeframeButtons) {
         replyMarkup = {
             inline_keyboard: [
-                [{
-                    text: '1D',
-                    callback_data: `chart_1d_${callbackData}`
-                }, {
-                    text: '7D',
-                    callback_data: `chart_7d_${callbackData}`
-                }, {
-                    text: '30D',
-                    callback_data: `chart_30d_${callbackData}`
-                }, {
-                    text: '90D',
-                    callback_data: `chart_90d_${callbackData}`
-                }],
-                [{
-                    text: '🔄 Refresh',
-                    callback_data: `refresh_chart_${callbackData}`
-                }, {
-                    text: '🗑️ Delete',
-                    callback_data: 'delete_message'
-                }]
+                [{text: '1D', callback_data: `chart_1d_${callbackData}`}, {text: '7D', callback_data: `chart_7d_${callbackData}`}, 
+                 {text: '30D', callback_data: `chart_30d_${callbackData}`}, {text: '90D', callback_data: `chart_90d_${callbackData}`}],
+                [{text: '🔄 Refresh', callback_data: `refresh_chart_${callbackData}`}, {text: '🗑️ Delete', callback_data: 'delete_message'}]
             ]
         };
     } else {
         replyMarkup = {
             inline_keyboard: [
-                [{
-                    text: '🔄 Refresh',
-                    callback_data: `refresh_${callbackData}`
-                }, {
-                    text: '🗑️ Delete',
-                    callback_data: 'delete_message'
-                }]
+                [{text: '🔄 Refresh', callback_data: `refresh_${callbackData}`}, {text: '🗑️ Delete', callback_data: 'delete_message'}]
             ]
         };
     }
@@ -1094,19 +965,14 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
 
     try {
         if (isPhoto) {
-            let options = { ...baseOptions,
-                photo: photoUrl,
-                caption: text
-            };
+            let options = { ...baseOptions, photo: photoUrl, caption: text };
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
 
             await axios.post(`https://api.telegram.org/bot${botToken}/editMessageCaption`, options);
         } else {
-            let options = { ...baseOptions,
-                text: text
-            };
+            let options = { ...baseOptions, text: text };
             if (messageThreadId) {
                 options.message_thread_id = parseInt(messageThreadId);
             }
@@ -1122,7 +988,6 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
     }
 }
 
-// --- Log user queries to Firestore ---
 async function logUserQuery(user, chatId, query, price, symbol, marketCap, messageId) {
     try {
         const docRef = db.collection('queries').doc();
@@ -1143,7 +1008,6 @@ async function logUserQuery(user, chatId, query, price, symbol, marketCap, messa
     }
 }
 
-// --- Build the leaderboard reply from Firestore data ---
 async function buildLeaderboardReply(chatId) {
     try {
         const snapshot = await db.collection('queries')
@@ -1205,34 +1069,25 @@ async function buildLeaderboardReply(chatId) {
         const sortedUsers = Object.values(queries).sort((a, b) => b.totalReturn - a.totalReturn);
 
         const mainHeader = `*👑 Token Lord Leaderboard*`;
-        const groupStats = `
-*Group Stats:*
-Period: All Time
-`;
+        const groupStats = `\n*Group Stats:*\nPeriod: All Time\n`;
 
         const leaderboardEntries = sortedUsers.slice(0, 10).map((user, index) => {
             const rank = index + 1;
             const avgReturn = user.calls > 0 ? (user.totalReturn / user.calls).toFixed(2) : '0.00';
             const hitRate = user.calls > 0 ? ((user.positiveReturns / user.calls) * 100).toFixed(0) : '0';
 
-            return `*#${rank} ${user.username}*
-\`Calls: ${user.calls}
-Hit Rate: ${hitRate}%
-Return: ${avgReturn}%
-\``;
+            return `*#${rank} ${user.username}*\n\`Calls: ${user.calls}\nHit Rate: ${hitRate}%\nReturn: ${avgReturn}%\``;
         }).join('\n');
 
-        return `${mainHeader}\n\n${groupStats}\n*Top Token Lords*\n${leaderboardEntries}`;
+        return `${mainHeader}\n${groupStats}\n*Top Token Lords*\n${leaderboardEntries}`;
     } catch (error) {
         console.error('❌ Failed to build leaderboard:', error.message);
         return '`Failed to build leaderboard. Please try again later.`';
     }
 }
 
-// --- Enhanced Mobile-Friendly Gemini Reply Function ---
 async function getGeminiReply(prompt) {
     try {
-        // Create dynamic prompt based on question nature
         const dynamicPrompt = analyzeQuestionAndCreatePrompt(prompt);
 
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
@@ -1244,7 +1099,6 @@ async function getGeminiReply(prompt) {
         const response = await result.response;
         let text = response.text();
 
-        // Extra safety: If response is still too long, truncate it
         if (text.length > 450) {
             text = text.substring(0, 400) + "...";
         }
@@ -1256,7 +1110,49 @@ async function getGeminiReply(prompt) {
     }
 }
 
-// --- Main webhook handler ---
+// FIXED: Precise token detection - only matches "number space symbol" pattern
+function isValidCoinPattern(text) {
+    // FIXED: Only match "1 eth" format with proper spacing, minimum 2 chars for symbol
+    const tokenPattern = /^(\d+(?:\.\d+)?)\s+([a-z]{2,10})$/i;
+    const matches = text.trim().match(tokenPattern);
+    
+    if (!matches) return false;
+    
+    const amount = parseFloat(matches[1]);
+    const symbol = matches[2].toLowerCase();
+    
+    // Additional validation: reasonable amount and known crypto symbols
+    if (amount <= 0 || amount > 999999999) return false;
+    if (symbol.length < 2 || symbol.length > 10) return false;
+    
+    return { amount, symbol };
+}
+
+// FIXED: Multi-token detection for sentences like "1 eth 2 btc"
+function extractMultipleTokens(text) {
+    const tokens = [];
+    // Split by spaces and process pairs
+    const words = text.trim().split(/\s+/);
+    
+    for (let i = 0; i < words.length - 1; i++) {
+        const amountStr = words[i];
+        const symbolStr = words[i + 1];
+        
+        // Check if this is a valid number followed by a symbol
+        if (/^\d+(?:\.\d+)?$/.test(amountStr) && /^[a-z]{2,10}$/i.test(symbolStr)) {
+            const amount = parseFloat(amountStr);
+            const symbol = symbolStr.toLowerCase();
+            
+            if (amount > 0 && amount <= 999999999) {
+                tokens.push({ amount, symbol });
+                i++; // Skip the symbol on next iteration
+            }
+        }
+    }
+    
+    return tokens.length > 0 ? tokens : null;
+}
+
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1297,7 +1193,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // --- ENHANCED: Handle callback queries for timeframe selection ---
+        // ENHANCED: Handle callback queries for timeframe selection and refresh
         if (update.callback_query) {
             const callbackQuery = update.callback_query;
             const chatId = callbackQuery.message.chat.id;
@@ -1309,34 +1205,24 @@ export default async function handler(req, res) {
                 callback_query_id: callbackQuery.id
             });
 
-            // --- Handle timeframe-specific chart requests ---
+            // Handle timeframe-specific chart requests
             if (callbackData.startsWith('chart_1d_') || callbackData.startsWith('chart_7d_') ||
                 callbackData.startsWith('chart_30d_') || callbackData.startsWith('chart_90d_')) {
                 const parts = callbackData.split('_');
-                const timeframe = parts[1].toUpperCase(); // 1D, 7D, 30D, 90D
-                const symbol = parts.slice(2).join('_'); // Rejoin in case symbol has underscores
+                const timeframe = parts[1].toUpperCase();
+                const symbol = parts.slice(2).join('_');
 
                 const coinData = await getCoinDataWithChanges(symbol);
                 if (coinData) {
                     let days;
                     switch (timeframe) {
-                        case '1D':
-                            days = 1;
-                            break;
-                        case '7D':
-                            days = 7;
-                            break;
-                        case '30D':
-                            days = 30;
-                            break;
-                        case '90D':
-                            days = 90;
-                            break;
-                        default:
-                            days = 30;
+                        case '1D': days = 1; break;
+                        case '7D': days = 7; break;
+                        case '30D': days = 30; break;
+                        case '90D': days = 90; break;
+                        default: days = 30;
                     }
 
-                    // Try to get OHLC data for candlestick chart
                     const ohlcData = await getOHLCData(coinData.id, days);
                     let chartUrl, caption;
 
@@ -1344,7 +1230,6 @@ export default async function handler(req, res) {
                         chartUrl = getCandlestickChartUrl(coinData.name, ohlcData, timeframe);
                         caption = `*${coinData.name}* OHLC Chart (${timeframe})`;
                     } else {
-                        // Fallback to line chart if OHLC not available
                         const historicalData = await getHistoricalData(coinData.id);
                         if (historicalData && historicalData.length > 0) {
                             chartUrl = getChartImageUrl(coinData.name, historicalData);
@@ -1355,7 +1240,6 @@ export default async function handler(req, res) {
                     }
 
                     if (chartUrl) {
-                        // Delete the old message and send a new one to ensure image updates
                         try {
                             await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
                                 chat_id: chatId,
@@ -1364,21 +1248,17 @@ export default async function handler(req, res) {
                             await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartUrl, caption, symbol, true);
                         } catch (deleteError) {
                             console.warn('⚠️ Could not delete message, trying to edit instead');
-                            // Fallback to editing if deletion fails
                             await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, chartUrl, symbol, true);
                         }
                     } else {
                         await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, caption, '', symbol, false);
                     }
-                } else {
-                    await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, `\`Coin "${symbol.toUpperCase()}" not found\``, '', symbol, false);
                 }
 
-                return res.status(200).json({
-                    ok: true
-                });
+                return res.status(200).json({ ok: true });
             }
 
+            // FIXED: Enhanced refresh handler with proper amount preservation
             if (callbackData.startsWith('refresh_')) {
                 const originalCommand = callbackData.substring('refresh_'.length);
                 let reply = '';
@@ -1391,7 +1271,6 @@ export default async function handler(req, res) {
                     const dexScreenerData = await getCoinFromDexScreener(address);
                     if (dexScreenerData) {
                         reply = buildDexScreenerReply(dexScreenerData);
-                        // Get first post information for signature
                         const firstPostInfo = await getFirstPostInfo(address, chatId);
                         if (firstPostInfo) {
                             const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
@@ -1404,7 +1283,6 @@ export default async function handler(req, res) {
                     const symbol = originalCommand.substring('chart_'.length);
                     const coinData = await getCoinDataWithChanges(symbol);
                     if (coinData) {
-                        // Default to 30D candlestick chart
                         const ohlcData = await getOHLCData(coinData.id, 30);
                         if (ohlcData && ohlcData.length > 0) {
                             reply = `*${coinData.name}* Candlestick Chart (30D)`;
@@ -1412,7 +1290,6 @@ export default async function handler(req, res) {
                             isPhoto = true;
                             showTimeframeButtons = true;
                         } else {
-                            // Fallback to line chart
                             const historicalData = await getHistoricalData(coinData.id);
                             if (historicalData && historicalData.length > 0) {
                                 reply = `*${coinData.name}* Price Chart (30D) - Line Chart Fallback`;
@@ -1422,8 +1299,6 @@ export default async function handler(req, res) {
                                 reply = `\`Failed to get chart data for ${coinData.name}\``;
                             }
                         }
-                    } else {
-                        reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
                     }
                 } else if (originalCommand === 'gas') {
                     const ethCoin = await getCoinDataWithChanges('eth');
@@ -1452,17 +1327,13 @@ export default async function handler(req, res) {
                         } else {
                             reply = '`Could not perform comparison. Missing required data.`';
                         }
-                    } else {
-                        reply = '`One or both coins were not found.`';
                     }
                 } else if (originalCommand.startsWith('leaderboard')) {
                     reply = await buildLeaderboardReply(chatId);
                     await editMessageInTopic(BOT_TOKEN, chatId, messageId, messageThreadId, reply, '', 'leaderboard');
-                    return res.status(200).json({
-                        ok: true
-                    });
+                    return res.status(200).json({ ok: true });
                 }
-                // FIXED: Enhanced multi-token refresh handler
+                // FIXED: Multi-token refresh handler with amount preservation
                 else if (originalCommand.startsWith('multi_')) {
                     const tokensString = originalCommand.substring('multi_'.length);
                     const tokenPairs = tokensString.split('|');
@@ -1474,41 +1345,34 @@ export default async function handler(req, res) {
                     
                     console.log(`🔄 Refreshing ${tokensToFetch.length} tokens:`, tokensToFetch);
                     
-                    // Fetch all coin data concurrently
                     const coinPromises = tokensToFetch.map(async (token) => {
                         try {
                             const coin = await getCoinDataWithChanges(token.symbol);
                             if (coin) {
-                                return {
-                                    success: true,
-                                    reply: buildReply(coin, token.amount),
-                                    symbol: token.symbol
-                                };
+                                return buildReply(coin, token.amount);
                             } else {
-                                return {
-                                    success: false,
-                                    reply: `\`Coin "${token.symbol.toUpperCase()}" not found\``,
-                                    symbol: token.symbol
-                                };
+                                console.log(`⚠️ Coin not found during refresh: ${token.symbol}`);
+                                return null; // Don't show "not found" messages during refresh
                             }
                         } catch (error) {
                             console.error(`❌ Error refreshing ${token.symbol}:`, error.message);
-                            return {
-                                success: false,
-                                reply: `\`Error refreshing "${token.symbol.toUpperCase()}"\``,
-                                symbol: token.symbol
-                            };
+                            return null;
                         }
                     });
                     
                     const results = await Promise.all(coinPromises);
-                    reply = results.map(result => result.reply).join('\n\n');
+                    const validResults = results.filter(r => r !== null);
                     
-                    console.log(`✅ Refreshed multi-token reply with ${results.length} tokens`);
+                    if (validResults.length > 0) {
+                        reply = validResults.join('\n\n');
+                    } else {
+                        reply = '`Unable to refresh data. Please try again later.`';
+                    }
+                    
+                    console.log(`✅ Refreshed multi-token reply with ${validResults.length} tokens`);
                 }
-                // Handle single token refresh (preserve amount)
+                // FIXED: Single token refresh with amount preservation
                 else {
-                    // Check if it's in format "amount_symbol" (e.g., "12_btc")
                     if (originalCommand.includes('_')) {
                         const [amountStr, symbol] = originalCommand.split('_');
                         const amount = parseFloat(amountStr);
@@ -1517,24 +1381,25 @@ export default async function handler(req, res) {
                             if (coin) {
                                 reply = buildReply(coin, amount);
                             } else {
-                                reply = `\`Coin "${symbol.toUpperCase()}" not found\``;
+                                console.log(`⚠️ Coin not found during refresh: ${symbol}`);
+                                reply = '`Unable to refresh data. Please try again later.`';
                             }
                         } else {
-                            // Fallback to regular symbol lookup
                             const coin = await getCoinDataWithChanges(originalCommand);
                             if (coin) {
                                 reply = buildReply(coin, 1);
                             } else {
-                                reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+                                console.log(`⚠️ Coin not found during refresh: ${originalCommand}`);
+                                reply = '`Unable to refresh data. Please try again later.`';
                             }
                         }
                     } else {
-                        // Regular single token without amount
                         const coin = await getCoinDataWithChanges(originalCommand);
                         if (coin) {
                             reply = buildReply(coin, 1);
                         } else {
-                            reply = `\`Coin "${originalCommand.toUpperCase()}" not found\``;
+                            console.log(`⚠️ Coin not found during refresh: ${originalCommand}`);
+                            reply = '`Unable to refresh data. Please try again later.`';
                         }
                     }
                 }
@@ -1551,9 +1416,7 @@ export default async function handler(req, res) {
                 }
             }
 
-            return res.status(200).json({
-                ok: true
-            });
+            return res.status(200).json({ ok: true });
         }
 
         const msg = update.message;
@@ -1571,7 +1434,7 @@ export default async function handler(req, res) {
         const user = msg.from;
         const chatType = msg.chat.type;
 
-        // --- NEW: Social Media Link Preview (Clean Single Link Format) ---
+        // Social Media Link Preview
         const linkData = getSingleBestAlternative(text);
         if (linkData.hasChanges) {
             console.log('🔄 Detected social media link, sending clean preview');
@@ -1579,7 +1442,6 @@ export default async function handler(req, res) {
             const senderUsername = user.username || user.first_name || `User${user.id}`;
             const escapedUsername = escapeMarkdownV2(senderUsername);
             
-            // Create clean message with just one media link + original
             const formattedMessage = `[Media Link](${linkData.alternativeUrl})\n\n[Original Link](${linkData.original}) sent by @${escapedUsername}`;
             
             await sendMessageToTopic(
@@ -1587,28 +1449,26 @@ export default async function handler(req, res) {
                 chatId, 
                 messageThreadId, 
                 formattedMessage,
-                '', // No callback data
+                '', 
                 { 
                     reply_to_message_id: messageId, 
-                    disable_web_page_preview: false, // Enable preview for media link
-                    parse_mode: 'Markdown' // Essential for hyperlinks
+                    disable_web_page_preview: false,
+                    parse_mode: 'Markdown'
                 }
             );
             
             return res.status(200).json({ ok: true, message: 'Clean preview sent' });
         }
 
-        // --- Enhanced /que command handler with mobile-friendly responses ---
+        // Enhanced /que command handler
         if (text.startsWith('/que')) {
             let prompt = text.substring(4).trim();
 
-            // Check if the command is a reply to another message
             if (msg.reply_to_message && msg.reply_to_message.text) {
                 const repliedText = msg.reply_to_message.text;
                 prompt = `(Context: "${repliedText}")\n\n${prompt}`;
             }
 
-            // Enhanced HTML escaping function
             function escapeHtml(str) {
                 if (!str || typeof str !== 'string') return 'Empty response';
                 return str
@@ -1617,29 +1477,25 @@ export default async function handler(req, res) {
                     .replace(/>/g, "&gt;")
                     .replace(/"/g, "&quot;")
                     .replace(/'/g, "&#x27;")
-                    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+                    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
                     .trim();
             }
 
             try {
                 let responseText;
                 if (prompt.length > 0) {
-                    // Use enhanced Gemini function with mobile-friendly prompting
                     responseText = await getGeminiReply(prompt);
                 } else {
                     responseText = "Please provide a query after the /que command.";
                 }
 
-                // Escape HTML and handle message length with smaller chunks
                 responseText = escapeHtml(responseText);
-                const messageParts = splitMessage(responseText, 600); // Smaller chunks for mobile
+                const messageParts = splitMessage(responseText, 600);
 
-                // Send each part as a separate message
                 for (let i = 0; i < messageParts.length; i++) {
                     const part = messageParts[i];
                     const isLastPart = i === messageParts.length - 1;
 
-                    // Add part indicator for multi-part messages (but with smaller parts, this should be rare)
                     const partIndicator = messageParts.length > 1 ?
                         `\n\n📱 ${i + 1}/${messageParts.length}` : '';
 
@@ -1650,14 +1506,12 @@ export default async function handler(req, res) {
                         parse_mode: "HTML"
                     });
 
-                    // Small delay between messages to maintain order
                     if (i < messageParts.length - 1) {
                         await new Promise(resolve => setTimeout(resolve, 100));
                     }
                 }
             } catch (err) {
                 console.error("Telegram API error:", err.response?.data || err.message);
-                // Fallback error message
                 try {
                     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                         chat_id: chatId,
@@ -1673,15 +1527,15 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
 
-        // --- Updated message filtering logic for multi-token support ---
+        // FIXED: Updated message filtering logic
         const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)*)$/;
         const isCalculation = mathRegex.test(text);
         
-        // FIXED: Updated regex for multi-token support
-        const tokenPattern = /(?:^|\s)(?:(\d+(?:\.\d+)?)\s*([a-z]+)|([a-z]+)\s*(\d+(?:\.\d+)?))/gi;
-        const isCoinCheck = tokenPattern.test(text.toLowerCase());
-        tokenPattern.lastIndex = 0; // Reset regex for actual processing
+        // FIXED: Precise coin detection - only "1 eth" format, not "1eth"
+        const singleTokenMatch = isValidCoinPattern(text);
+        const multipleTokens = extractMultipleTokens(text);
+        const isCoinCheck = singleTokenMatch || multipleTokens;
         
         const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
@@ -1692,27 +1546,23 @@ export default async function handler(req, res) {
             });
         }
 
-        // --- MODIFIED: Address handling with first post tracking ---
+        // Address handling with first post tracking
         if (isAddress) {
             const dexScreenerData = await getCoinFromDexScreener(text);
             if (dexScreenerData) {
                 const reply = buildDexScreenerReply(dexScreenerData);
                 const callbackData = `dexscreener_${text}`;
 
-                // Check if this address was posted before in this chat
                 const firstPostInfo = await getFirstPostInfo(text, chatId);
                 if (firstPostInfo) {
-                    // Address was posted before - use FIRST post information for signature
                     console.log('🔄 Using existing first post info for signature');
                     const signature = buildSignature(firstPostInfo, dexScreenerData.priceChange?.h1 || 0, chatId);
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
                 } else {
-                    // This is the FIRST time this address is posted in this chat
                     console.log('🆕 First time posting this address, storing first post info');
                     const username = user.username || user.first_name || `User${user.id}`;
                     const currentTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
-                    // Store first post information
                     await storeFirstPostInfo(
                         text,
                         chatId,
@@ -1723,11 +1573,10 @@ export default async function handler(req, res) {
                         dexScreenerData.baseToken.symbol
                     );
 
-                    // Create signature with current user as the first poster
                     const firstPostData = {
                         firstUsername: username,
                         firstMarketCap: dexScreenerData.marketCap,
-                        firstTimestamp: new Date(), // Use current time for new posts
+                        firstTimestamp: new Date(),
                         firstMessageId: messageId
                     };
 
@@ -1735,28 +1584,24 @@ export default async function handler(req, res) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply + signature, callbackData);
                 }
 
-                // Always log to queries collection for leaderboard
                 await logUserQuery(user, chatId, text, parseFloat(dexScreenerData.priceUsd), dexScreenerData.baseToken.symbol, dexScreenerData.marketCap, messageId);
-            } else {
-                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Could not find a coin for that address.`');
             }
+            // FIXED: Removed "Could not find coin" message - stays silent
         } else if (isCommand) {
             const parts = text.substring(1).toLowerCase().split(' ');
-            const command = parts[0].split('@')[0]; // Fix: Extract just the command name
+            const command = parts[0].split('@')[0];
             const symbol = parts[1];
 
             if (command === 'leaderboard') {
                 const reply = await buildLeaderboardReply(chatId);
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'leaderboard');
             }
-            // --- NEW: Quote command handler ---
             else if (command === 'quote' || command === 's') {
                 const repliedToMessage = msg.reply_to_message;
                 if (repliedToMessage) {
                     const messageToQuote = repliedToMessage;
                     const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null);
                     if (quoteImageBuffer) {
-                        // Send the sticker using the new dedicated function
                         await sendStickerToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageBuffer);
                     } else {
                         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to generate quote image. Please try again later.`');
@@ -1765,32 +1610,25 @@ export default async function handler(req, res) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Please reply to a message with /quote or /s to create an image.`');
                 }
             }
-            // --- ENHANCED: Chart command with candlestick support ---
             else if (command === 'chart' && symbol) {
                 const coinData = await getCoinDataWithChanges(symbol);
                 if (coinData) {
-                    // Try to get OHLC data for candlestick chart (default 30 days)
                     const ohlcData = await getOHLCData(coinData.id, 30);
                     if (ohlcData && ohlcData.length > 0) {
                         const chartImageUrl = getCandlestickChartUrl(coinData.name, ohlcData, '30D');
                         await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl,
                             `*${coinData.name}* Candlestick Chart (30D)`, symbol, true);
                     } else {
-                        // Fallback to line chart if OHLC data not available
                         const historicalData = await getHistoricalData(coinData.id);
                         if (historicalData && historicalData.length > 0) {
                             const chartImageUrl = getChartImageUrl(coinData.name, historicalData);
                             await sendPhotoToTopic(BOT_TOKEN, chatId, messageThreadId, chartImageUrl,
                                 `*${coinData.name}* Price Chart (30D) - Line Chart Fallback`, symbol, false);
-                        } else {
-                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                                `\`Failed to get chart data for ${coinData.name}\``, `chart_${symbol}`);
                         }
+                        // FIXED: Removed "Failed to get chart data" message
                     }
-                } else {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                        `\`Coin "${symbol.toUpperCase()}" not found\``, `chart_${symbol}`);
                 }
+                // FIXED: Removed "Coin not found" message
             } else if (command === 'gas') {
                 const ethCoin = await getCoinDataWithChanges('eth');
                 const ethPrice = ethCoin ? ethCoin.current_price : null;
@@ -1820,10 +1658,8 @@ export default async function handler(req, res) {
                             const reply = '`Could not perform comparison. Missing required data.`';
                             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
                         }
-                    } else {
-                        const reply = '`One or both coins were not found.`';
-                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, `compare_${symbol1}_${symbol2}`);
                     }
+                    // FIXED: Removed "coins not found" message
                 } else {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Usage: /compare [symbol1] [symbol2]`', `compare_${symbol1}_${symbol2}`);
                 }
@@ -1851,9 +1687,6 @@ export default async function handler(req, res) {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
             }
-
-            // Removed automatic coin symbol commands like /btc, /eth, etc.
-            // Only specific commands above are handled now
         } else if (isCalculation) {
             const result = evaluateExpression(text);
             if (result !== null) {
@@ -1862,34 +1695,20 @@ export default async function handler(req, res) {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Invalid expression`');
             }
         } 
-        // FIXED: Enhanced multi-token coin check handling
+        // FIXED: Enhanced coin check handling with silent failures
         else if (isCoinCheck) {
-            const tokensToFetch = [];
-            let match;
+            let tokensToProcess = [];
             
-            while ((match = tokenPattern.exec(text.toLowerCase())) !== null) {
-                let amount, symbol;
-                
-                if (match[1] && match[2]) {
-                    // Pattern: "1 eth"
-                    amount = parseFloat(match[1]);
-                    symbol = match[2].toLowerCase();
-                } else if (match[3] && match[4]) {
-                    // Pattern: "eth 1"
-                    symbol = match[3].toLowerCase();
-                    amount = parseFloat(match[4]);
-                }
-                
-                if (symbol && amount && !isNaN(amount)) {
-                    tokensToFetch.push({ amount, symbol });
-                }
+            if (singleTokenMatch) {
+                tokensToProcess = [singleTokenMatch];
+            } else if (multipleTokens) {
+                tokensToProcess = multipleTokens;
             }
             
-            if (tokensToFetch.length > 0) {
-                console.log(`🔍 Found ${tokensToFetch.length} tokens to fetch:`, tokensToFetch);
+            if (tokensToProcess.length > 0) {
+                console.log(`🔍 Found ${tokensToProcess.length} tokens to fetch:`, tokensToProcess);
                 
-                // Fetch all coin data concurrently for better performance
-                const coinPromises = tokensToFetch.map(async (token) => {
+                const coinPromises = tokensToProcess.map(async (token) => {
                     try {
                         const coin = await getCoinDataWithChanges(token.symbol);
                         if (coin) {
@@ -1900,41 +1719,39 @@ export default async function handler(req, res) {
                                 amount: token.amount
                             };
                         } else {
-                            return {
-                                success: false,
-                                reply: `\`Coin "${token.symbol.toUpperCase()}" not found\``,
-                                symbol: token.symbol,
-                                amount: token.amount
-                            };
+                            console.log(`⚠️ Coin not found: ${token.symbol} (staying silent)`);
+                            return null; // FIXED: Return null instead of error message
                         }
                     } catch (error) {
                         console.error(`❌ Error fetching ${token.symbol}:`, error.message);
-                        return {
-                            success: false,
-                            reply: `\`Error fetching "${token.symbol.toUpperCase()}"\``,
-                            symbol: token.symbol,
-                            amount: token.amount
-                        };
+                        return null; // FIXED: Return null instead of error message
                     }
                 });
                 
                 const results = await Promise.all(coinPromises);
+                const validResults = results.filter(r => r !== null);
                 
-                // Combine all replies into a single message
-                const combinedReply = results.map(result => result.reply).join('\n\n');
-                
-                // FIXED: Create callback data that preserves amounts for refresh functionality
-                const symbolsForCallback = tokensToFetch.map(t => `${t.amount}_${t.symbol}`).join('|');
-                
-                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, `multi_${symbolsForCallback}`);
-                
-                console.log(`✅ Sent multi-token reply with ${results.length} tokens`);
+                // FIXED: Only send message if we have valid results
+                if (validResults.length > 0) {
+                    const combinedReply = validResults.map(result => result.reply).join('\n\n');
+                    
+                    // FIXED: Create callback data that preserves amounts for refresh functionality
+                    const symbolsForCallback = tokensToProcess
+                        .filter(t => validResults.some(r => r.symbol === t.symbol))
+                        .map(t => `${t.amount}_${t.symbol}`)
+                        .join('|');
+                    
+                    const callbackData = validResults.length > 1 ? `multi_${symbolsForCallback}` : symbolsForCallback;
+                    
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, combinedReply, callbackData);
+                    
+                    console.log(`✅ Sent reply with ${validResults.length} valid tokens`);
+                }
+                // FIXED: If no valid results, stay completely silent (no message sent)
             }
         }
 
-        return res.status(200).json({
-            ok: true
-        });
+        return res.status(200).json({ ok: true });
     } catch (error) {
         console.error('❌ Webhook error:', error.message);
         console.error('Stack:', error.stack);
