@@ -771,6 +771,137 @@ function buildGasReply(gasPrices, ethPrice) {
     }
 }
 
+// NEW: Alert and Reminder Functions
+async function createPriceAlert(userId, chatId, symbol, condition, targetPrice, username) {
+    try {
+        const docRef = db.collection('price_alerts').doc();
+        await docRef.set({
+            userId,
+            username,
+            chatId: String(chatId),
+            symbol: symbol.toLowerCase(),
+            targetPrice,
+            condition,
+            isActive: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastChecked: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`✅ Created price alert: ${symbol} ${condition} ${targetPrice} for user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error('❌ Error creating price alert:', error.message);
+        return false;
+    }
+}
+
+async function createTimeReminder(userId, chatId, message, triggerTime, username) {
+    try {
+        const docRef = db.collection('time_reminders').doc();
+        await docRef.set({
+            userId,
+            username,
+            chatId: String(chatId),
+            message,
+            triggerTime: admin.firestore.Timestamp.fromDate(triggerTime),
+            isActive: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`✅ Created time reminder: "${message}" for ${triggerTime} for user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error('❌ Error creating time reminder:', error.message);
+        return false;
+    }
+}
+
+async function getUserAlerts(userId, chatId) {
+    try {
+        const [priceAlertsSnapshot, timeRemindersSnapshot] = await Promise.all([
+            db.collection('price_alerts')
+                .where('userId', '==', userId)
+                .where('chatId', '==', String(chatId))
+                .where('isActive', '==', true)
+                .orderBy('createdAt', 'desc')
+                .get(),
+            db.collection('time_reminders')
+                .where('userId', '==', userId)
+                .where('chatId', '==', String(chatId))
+                .where('isActive', '==', true)
+                .orderBy('createdAt', 'desc')
+                .get()
+        ]);
+
+        const priceAlerts = priceAlertsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            type: 'price',
+            ...doc.data()
+        }));
+
+        const timeReminders = timeRemindersSnapshot.docs.map(doc => ({
+            id: doc.id,
+            type: 'time',
+            ...doc.data()
+        }));
+
+        return { priceAlerts, timeReminders };
+    } catch (error) {
+        console.error('❌ Error getting user alerts:', error.message);
+        return { priceAlerts: [], timeReminders: [] };
+    }
+}
+
+function buildAlertsReply(alerts) {
+    const { priceAlerts, timeReminders } = alerts;
+    
+    if (priceAlerts.length === 0 && timeReminders.length === 0) {
+        return '`No active alerts or reminders found.`';
+    }
+
+    let reply = '*Your Active Alerts & Reminders:*\n\n';
+
+    if (priceAlerts.length > 0) {
+        reply += '*🚨 Price Alerts:*\n';
+        priceAlerts.forEach((alert, index) => {
+            reply += `${index + 1}. ${alert.symbol.toUpperCase()} ${alert.condition} $${alert.targetPrice.toLocaleString()}\n`;
+        });
+        reply += '\n';
+    }
+
+    if (timeReminders.length > 0) {
+        reply += '*⏰ Time Reminders:*\n';
+        timeReminders.forEach((reminder, index) => {
+            const triggerDate = reminder.triggerTime.toDate();
+            const dateStr = triggerDate.toLocaleDateString();
+            const timeStr = triggerDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            reply += `${index + 1}. "${reminder.message}" on ${dateStr} at ${timeStr}\n`;
+        });
+    }
+
+    return reply;
+}
+
+async function cancelAlert(userId, chatId, alertType, alertIndex) {
+    try {
+        const collectionName = alertType === 'price' ? 'price_alerts' : 'time_reminders';
+        const snapshot = await db.collection(collectionName)
+            .where('userId', '==', userId)
+            .where('chatId', '==', String(chatId))
+            .where('isActive', '==', true)
+            .orderBy('createdAt', 'desc')
+            .get();
+
+        if (alertIndex > 0 && alertIndex <= snapshot.size) {
+            const docToUpdate = snapshot.docs[alertIndex - 1];
+            await docToUpdate.ref.update({ isActive: false });
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error canceling alert:', error.message);
+        return false;
+    }
+}
+
 async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callbackData = '', options = {}) {
     if (!text || text.trim() === '') {
         console.error('❌ Refusing to send an empty message.');
@@ -1666,6 +1797,145 @@ export default async function handler(req, res) {
                         // FIXED: Removed "Failed to get chart data" message
                     }
                 }
+                else if (command === 'alert') {
+                // Usage: /alert btc above 100000
+                const [symbol, condition, priceStr] = parts.slice(1);
+                
+                if (!symbol || !condition || !priceStr) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Usage: /alert [symbol] [above/below] [price]\nExample: /alert btc above 100000`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                if (!['above', 'below'].includes(condition.toLowerCase())) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Condition must be "above" or "below"\nExample: /alert eth below 3000`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                const targetPrice = parseFloat(priceStr);
+                if (isNaN(targetPrice) || targetPrice <= 0) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Invalid price. Please enter a valid number\nExample: /alert sol above 150`');
+                    return res.status(200).json({ ok: true });
+                }
+
+                // Verify the coin exists
+                const coinData = await getCoinDataWithChanges(symbol);
+                if (!coinData) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `\`Coin "${symbol.toUpperCase()}" not found. Please check the symbol.\``);
+                    return res.status(200).json({ ok: true });
+                }
+
+                const username = user.username || user.first_name || `User${user.id}`;
+                const success = await createPriceAlert(user.id, chatId, symbol, condition.toLowerCase(), targetPrice, username);
+                
+                if (success) {
+                    const currentPrice = coinData.current_price;
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `✅ *Price Alert Set*
+
+${symbol.toUpperCase()} ${condition} $${targetPrice.toLocaleString()}
+Current price: $${currentPrice.toLocaleString()}
+
+You'll be notified when the condition is met.`, 'alert_set');
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Failed to create alert. Please try again later.`');
+                }
+            }
+
+            else if (command === 'remind') {
+                // Usage: /remind "check portfolio" 2024-12-25 15:30
+                const reminderMatch = text.match(/\/remind\s+"([^"]+)"\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+                
+                if (!reminderMatch) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `\`Usage: /remind "message" YYYY-MM-DD HH:MM\n\nExamples:\n/remind "check portfolio" 2024-12-25 15:30\n/remind "buy the dip" 2024-12-20 09:00\``);
+                    return res.status(200).json({ ok: true });
+                }
+                
+                const [, reminderMessage, dateStr, timeStr] = reminderMatch;
+                const triggerTime = new Date(`${dateStr}T${timeStr}:00`);
+                
+                // Validate date is in the future
+                if (triggerTime <= new Date()) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Reminder time must be in the future.`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                // Validate date is not too far in future (1 year max)
+                const oneYearFromNow = new Date();
+                oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                if (triggerTime > oneYearFromNow) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Reminder cannot be set more than 1 year in the future.`');
+                    return res.status(200).json({ ok: true });
+                }
+
+                const username = user.username || user.first_name || `User${user.id}`;
+                const success = await createTimeReminder(user.id, chatId, reminderMessage, triggerTime, username);
+                
+                if (success) {
+                    const dateStr = triggerTime.toLocaleDateString();
+                    const timeStr = triggerTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `⏰ *Reminder Set*
+
+"${reminderMessage}"
+
+Date: ${dateStr}
+Time: ${timeStr}
+
+I'll notify you at the specified time.`, 'reminder_set');
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Failed to create reminder. Please try again later.`');
+                }
+            }
+
+            else if (command === 'alerts' || command === 'reminders') {
+                const alerts = await getUserAlerts(user.id, chatId);
+                const reply = buildAlertsReply(alerts);
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, reply, 'user_alerts');
+            }
+
+            else if (command === 'cancel') {
+                // Usage: /cancel price 1 OR /cancel time 2
+                const [alertType, indexStr] = parts.slice(1);
+                
+                if (!alertType || !indexStr) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Usage: /cancel [price/time] [number]\nExample: /cancel price 1\nUse /alerts to see your alerts first.`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                if (!['price', 'time'].includes(alertType.toLowerCase())) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Alert type must be "price" or "time"\nExample: /cancel price 1`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                const alertIndex = parseInt(indexStr);
+                if (isNaN(alertIndex) || alertIndex <= 0) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Invalid alert number. Use /alerts to see your alerts.`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                const success = await cancelAlert(user.id, chatId, alertType.toLowerCase(), alertIndex);
+                
+                if (success) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `✅ ${alertType.charAt(0).toUpperCase() + alertType.slice(1)} alert #${alertIndex} has been canceled.`);
+                } else {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Alert not found or already inactive. Use /alerts to see your active alerts.`');
+                }
+            }
+                
                 // FIXED: Removed "Coin not found" message
             } else if (command === 'gas') {
                 const ethCoin = await getCoinDataWithChanges('eth');
@@ -1714,6 +1984,12 @@ export default async function handler(req, res) {
 /que [question] - Ask the AI anything, e.g., \`/que what is defi\`
 */quote* or */s* - Reply to a message with this command to create a quote sticker
 /leaderboard - See the top token finders
+
+*NEW: Alerts & Reminders:*
+/alert [symbol] [above/below] [price] - Set price alert, e.g., \`/alert btc above 100000\`
+/remind "message" YYYY-MM-DD HH:MM - Set time reminder, e.g., \`/remind "check portfolio" 2024-12-25 15:30\`
+/alerts - View your active alerts and reminders
+/cancel [price/time] [number] - Cancel specific alert, e.g., \`/cancel price 1\`
 /help - Show this message
 
 *Other features:*
@@ -1721,6 +1997,7 @@ export default async function handler(req, res) {
 - Use simple math, e.g., \`5 * 10\`
 - **Multi-token support**: \`1 eth 2 btc 0.5 doge\`
 - **Auto-enhances Twitter/X, Instagram, TikTok, Reddit links for better previews**`);
+    
             } else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
