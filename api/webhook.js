@@ -450,7 +450,7 @@ function evaluateExpression(expression) {
             return null;
         }
 
-        const result = new Function(`return ${sanitizedExpression}`)();
+        const result = new Function(`return ${sanitizedExpression}`)() ;
         if (typeof result === 'number' && isFinite(result)) {
             return result;
         }
@@ -1797,7 +1797,8 @@ export default async function handler(req, res) {
                         // FIXED: Removed "Failed to get chart data" message
                     }
                 }
-                else if (command === 'alert') {
+                // FIXED: Removed "Coin not found" message
+            } else if (command === 'alert') {
                 // Usage: /alert btc above 100000
                 const [symbol, condition, priceStr] = parts.slice(1);
                 
@@ -1935,9 +1936,7 @@ I'll notify you at the specified time.`, 'reminder_set');
                         '`Alert not found or already inactive. Use /alerts to see your active alerts.`');
                 }
             }
-                
-                // FIXED: Removed "Coin not found" message
-            } else if (command === 'gas') {
+            else if (command === 'gas') {
                 const ethCoin = await getCoinDataWithChanges('eth');
                 const ethPrice = ethCoin ? ethCoin.current_price : null;
                 const gasPrices = await getEthGasPrice();
