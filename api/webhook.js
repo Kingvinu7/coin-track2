@@ -598,6 +598,7 @@ function buildReply(coin, amount) {
         lines.push(`MC: ${fmtBig(mc)}`);
         lines.push(`FDV: ${fdv}`);
         lines.push(`ATH: ${fmtPrice(ath)}`);
+        lines.push(`H/L: ${fmtPrice(coin.high_24h)}/${fmtPrice(coin.low_24h)}`);
         lines.push(`1H: ${fmtChange(price_change_1h)}`);
         lines.push(`1D: ${fmtChange(price_change_24h)}`);
         lines.push(`7D: ${fmtChange(price_change_7d)}`);
