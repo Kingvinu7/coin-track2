@@ -96,9 +96,11 @@ async function checkPriceAlerts() {
                 const emoji = priceChange1h >= 0 ? '🟢' : '🔴';
                 const changeText = priceChange1h >= 0 ? `+${priceChange1h.toFixed(2)}%` : `${priceChange1h.toFixed(2)}%`;
                 
-                const message = `🚨 **PRICE ALERT TRIGGERED**
+                const usernameText = alert.username ? `@${alert.username}` : '';
 
-${alert.symbol.toUpperCase()} is now ${alert.condition} $${alert.targetPrice.toLocaleString()}!
+const message = `🚨 **PRICE ALERT TRIGGERED**
+
+${alert.symbol.toUpperCase()} is now ${alert.condition} $${alert.targetPrice.toLocaleString()}! ${usernameText}
 
 \`Current Price: $${currentPrice.toLocaleString()}\`
 \`1H Change: ${emoji} ${changeText}\`
