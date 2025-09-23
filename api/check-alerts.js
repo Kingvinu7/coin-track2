@@ -152,9 +152,9 @@ async function checkTimeReminders() {
             
             const usernameText = reminder.username ? `@${reminder.username}` : '';
             
-            const message = `⏰ **REMINDER**
+            const message = `⏰ **REMINDER** 
 
-${reminder.message} ${usernameText}
+${reminder.message} By  ${usernameText}
 
 *Set on: ${reminder.createdAt.toDate().toLocaleDateString()}*`;
 
