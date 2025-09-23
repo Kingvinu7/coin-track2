@@ -150,9 +150,11 @@ async function checkTimeReminders() {
             
             console.log(`TIME REMINDER TRIGGERED: ${reminder.message}`);
             
+            const usernameText = reminder.username ? `@${reminder.username}` : '';
+            
             const message = `⏰ **REMINDER**
 
-${reminder.message}
+${reminder.message} ${usernameText}
 
 *Set on: ${reminder.createdAt.toDate().toLocaleDateString()}*`;
 

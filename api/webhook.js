@@ -1849,31 +1849,74 @@ You'll be notified when the condition is met.`, 'alert_set');
             }
 
             else if (command === 'remind') {
-                // Usage: /remind "check portfolio" 2024-12-25 15:30
-                const reminderMatch = text.match(/\/remind\s+"([^"]+)"\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+                // Usage: /remind "check portfolio" 3pm
+                const reminderMatch = text.match(/\/remind\s+"([^"]+)"\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
                 
                 if (!reminderMatch) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                        `\`Usage: /remind "message" YYYY-MM-DD HH:MM\n\nExamples:\n/remind "check portfolio" 2024-12-25 15:30\n/remind "buy the dip" 2024-12-20 09:00\``);
+                        `\`Usage: /remind "message" [time]\n\nExamples:\n/remind "check portfolio" 3pm\n/remind "buy the dip" 9:30am\n/remind "hello" 15:30\`\n\nTime format: IST timezone, supports 12hr (3pm) and 24hr (15:30) formats`);
                     return res.status(200).json({ ok: true });
                 }
                 
-                const [, reminderMessage, dateStr, timeStr] = reminderMatch;
-                const triggerTime = new Date(`${dateStr}T${timeStr}:00`);
+                const [, reminderMessage, timeStr] = reminderMatch;
                 
-                // Validate date is in the future
-                if (triggerTime <= new Date()) {
+                // Parse time and convert to IST
+                function parseTimeToIST(timeStr) {
+                    const now = new Date();
+                    let hours, minutes;
+                    
+                    // Handle 12-hour format (3pm, 9:30am)
+                    const twelveHourMatch = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+                    if (twelveHourMatch) {
+                        hours = parseInt(twelveHourMatch[1]);
+                        minutes = parseInt(twelveHourMatch[2] || '0');
+                        const period = twelveHourMatch[3].toLowerCase();
+                        
+                        if (period === 'pm' && hours !== 12) hours += 12;
+                        if (period === 'am' && hours === 12) hours = 0;
+                    } 
+                    // Handle 24-hour format (15:30 or just 15)
+                    else {
+                        const twentyFourHourMatch = timeStr.match(/(\d{1,2})(?::(\d{2}))?/);
+                        if (twentyFourHourMatch) {
+                            hours = parseInt(twentyFourHourMatch[1]);
+                            minutes = parseInt(twentyFourHourMatch[2] || '0');
+                        } else {
+                            return null;
+                        }
+                    }
+                    
+                    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+                        return null;
+                    }
+                    
+                    // Create IST date for today
+                    const istTime = new Date();
+                    // Convert to IST (UTC+5:30)
+                    istTime.setUTCHours(hours - 5, minutes - 30, 0, 0);
+                    
+                    // If the time has passed today, set it for tomorrow
+                    if (istTime <= now) {
+                        istTime.setUTCDate(istTime.getUTCDate() + 1);
+                    }
+                    
+                    return istTime;
+                }
+                
+                const triggerTime = parseTimeToIST(timeStr);
+                
+                if (!triggerTime) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                        '`Reminder time must be in the future.`');
+                        '`Invalid time format. Use formats like: 3pm, 9:30am, 15:30`');
                     return res.status(200).json({ ok: true });
                 }
                 
-                // Validate date is not too far in future (1 year max)
-                const oneYearFromNow = new Date();
-                oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-                if (triggerTime > oneYearFromNow) {
+                // Validate date is not too far in future (7 days max for time-only reminders)
+                const sevenDaysFromNow = new Date();
+                sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+                if (triggerTime > sevenDaysFromNow) {
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                        '`Reminder cannot be set more than 1 year in the future.`');
+                        '`Time-based reminders are limited to within 7 days.`');
                     return res.status(200).json({ ok: true });
                 }
 
@@ -1881,15 +1924,22 @@ You'll be notified when the condition is met.`, 'alert_set');
                 const success = await createTimeReminder(user.id, chatId, reminderMessage, triggerTime, username);
                 
                 if (success) {
-                    const dateStr = triggerTime.toLocaleDateString();
-                    const timeStr = triggerTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    // Display time in IST format
+                    const istDate = new Date(triggerTime.getTime() + (5.5 * 60 * 60 * 1000));
+                    const dateStr = istDate.toLocaleDateString('en-IN');
+                    const timeStr12 = istDate.toLocaleTimeString('en-IN', { 
+                        hour: 'numeric', 
+                        minute: '2-digit',
+                        hour12: true 
+                    });
+                    
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
                         `⏰ *Reminder Set*
 
 "${reminderMessage}"
 
 Date: ${dateStr}
-Time: ${timeStr}
+Time: ${timeStr12} IST
 
 I'll notify you at the specified time.`, 'reminder_set');
                 } else {
@@ -1987,7 +2037,7 @@ I'll notify you at the specified time.`, 'reminder_set');
 
 *NEW: Alerts & Reminders:*
 /alert [symbol] [above/below] [price] - Set price alert, e.g., \`/alert btc above 100000\`
-/remind "message" YYYY-MM-DD HH:MM - Set time reminder, e.g., \`/remind "check portfolio" 2024-12-25 15:30\`
+/remind "message" [time] - Set time reminder (IST), e.g., \`/remind "hello" 3pm\`
 /alerts - View your active alerts and reminders
 /cancel [price/time] [number] - Cancel specific alert, e.g., \`/cancel price 1\`
 /help - Show this message
