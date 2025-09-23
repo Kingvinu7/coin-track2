@@ -1,6 +1,6 @@
 # Testing Guide for IST Reminder Feature
 
-## 🧪 Testing Options
+## 🧪 Testing Optionss
 
 ### Option 1: Create Test Bot (Recommended)
 1. **Create test bot:**
