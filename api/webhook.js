@@ -17,15 +17,17 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// --- NEW: Escape HTML characters for safe Telegram sending ---
-function escapeHtml(text) {
+// --- NEW: Escape Markdown V1 characters for safe Telegram sending ---
+function escapeMarkdown(text) {
     if (!text) return '';
+    // Only escape the most problematic characters for Telegram Markdown V1
+    // Be conservative to avoid breaking existing formatting
     return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#x27;');
+        .replace(/\\/g, '\\\\')
+        .replace(/\*/g, '\\*')
+        .replace(/_/g, '\\_')
+        .replace(/\[/g, '\\[')
+        .replace(/\]/g, '\\]');
 }
 
 // --- Simple Social Media Link Detection with Single Best Alternative ---
@@ -599,10 +601,10 @@ function buildReply(coin, amount) {
         lines.push(`7D: ${fmtChange(price_change_7d)}`);
         lines.push(`30D: ${fmtChange(price_change_30d)}`);
 
-        return `<code>${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}</code>`;
+        return `\`${coin.name} (${coin.symbol.toUpperCase()})\n${lines.join('\n')}\``;
     } catch (error) {
         console.error('❌ buildReply error:', error.message);
-        return `<code>Error formatting reply for ${coin?.name || 'unknown coin'}</code>`;
+        return `\`Error formatting reply for ${coin?.name || 'unknown coin'}\``;
     }
 }
 
@@ -653,8 +655,15 @@ function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     const emoji = currentPriceChange1h > 0 ? '😈' : '😡';
     const formattedMC = fmtBig(firstPostData.firstMarketCap);
     const telegramLink = `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${firstPostData.firstMessageId}`;
-    const escapedUsername = escapeHtml(firstPostData.firstUsername);
-    const usernameLink = `<a href="${telegramLink}">@${escapedUsername}</a>`;
+    
+    // For usernames in Markdown links, we need to be more careful about escaping
+    // Only escape the most critical characters that would break the link syntax
+    const safeUsername = firstPostData.firstUsername
+        .replace(/\\/g, '\\\\')
+        .replace(/\]/g, '\\]')
+        .replace(/\[/g, '\\[');
+    
+    const usernameLink = `[@${safeUsername}](${telegramLink})`;
 
     let timestampDate;
     if (firstPostData.firstTimestamp && typeof firstPostData.firstTimestamp.toDate === 'function') {
@@ -671,7 +680,7 @@ function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     const timeDifference = Math.floor((new Date() - timestampDate) / 1000);
     const formattedTime = formatTimeDuration(timeDifference);
 
-    return `\n\n${emoji} ${usernameLink} @ <code>$${formattedMC}</code> [ ${formattedTime} ]`;
+    return `\n\n${emoji} ${usernameLink} @ \`$${formattedMC}\` [ ${formattedTime} ]`;
 }
 
 function buildDexScreenerReply(dexScreenerData) {
@@ -698,32 +707,32 @@ function buildDexScreenerReply(dexScreenerData) {
             mevxLink = `https://t.me/MevxTradingBot?start=${token.address}-Ld8DMWbaLLlQ`;
         }
 
-        let reply = `💊 <code>${token.name}</code> (<code>${token.symbol}</code>)
-🔗 CHAIN: <code>#${formattedChain}</code>
-🔄 DEX PAIR: <code>${formattedExchange}</code>
-💎 USD: <code>${formattedPrice}</code> (<code>${formattedChange1h}</code>)
-✨ MARKET CAP: <code>$${mc}</code>
+        let reply = `💊 \`${token.name}\` (\`${token.symbol}\`)
+🔗 CHAIN: \`#${formattedChain}\`
+🔄 DEX PAIR: \`${formattedExchange}\`
+💎 USD: \`${formattedPrice}\` (\`${formattedChange1h}\`)
+✨ MARKET CAP: \`$${mc}\`
 🪙 ADDRESS:
-<code>${token.address}</code>
-⚜️ VOLUME: <code>$${vol}</code>
-🌀 LP: <code>$${lp}</code>
+\`${token.address}\`
+⚜️ VOLUME: \`$${vol}\`
+🌀 LP: \`$${lp}\`
 `;
 
-        let links = `\n<a href="https://dexscreener.com/${pair.chainId}/${token.address}">DEXScreener</a>`;
+        let links = `\n[DEXScreener](https://dexscreener.com/${pair.chainId}/${token.address})`;
 
         if (mexcLink) {
-            links += ` | <a href="${mexcLink}">MEXC</a>`;
+            links += ` | [MEXC](${mexcLink})`;
         }
 
         if (mevxLink) {
-            links += ` | <a href="${mevxLink}">MEVX</a>`;
+            links += ` | [MEVX](${mevxLink})`;
         }
 
         reply += `${links}`;
         return reply.trim();
     } catch (error) {
         console.error('❌ buildDexScreenerReply error:', error.message);
-        return '<code>Error formatting DexScreener reply.</code>';
+        return '`Error formatting DexScreener reply.`';
     }
 }
 
@@ -733,17 +742,17 @@ function buildCompareReply(coin1, coin2, theoreticalPrice) {
         const lines = [];
         lines.push(`If ${coin1.name} (${coin1.symbol.toUpperCase()}) had the market cap of ${coin2.name} (${coin2.symbol.toUpperCase()}),`);
         lines.push(`its price would be approximately ${formattedPrice}.`);
-        return `<code>${lines.join('\n')}</code>`;
+        return `\`${lines.join('\n')}\``;
     } catch (error) {
         console.error('❌ buildCompareReply error:', error.message);
-        return '<code>Error formatting comparison reply</code>';
+        return '`Error formatting comparison reply`';
     }
 }
 
 function buildGasReply(gasPrices, ethPrice) {
     try {
         if (!gasPrices) {
-            return '<code>Could not retrieve gas prices. Please try again later.</code>';
+            return '`Could not retrieve gas prices. Please try again later.`';
         }
 
         const gasLimit = 21000;
@@ -760,10 +769,10 @@ function buildGasReply(gasPrices, ethPrice) {
         lines.push(`Fast: ${gasPrices.high} Gwei (~${fmtPrice(highCost)})`);
         lines.push(`ETH: ${fmtPrice(ethPrice)}`);
 
-        return `<code>${lines.join('\n')}</code>`;
+        return `\`${lines.join('\n')}\``;
     } catch (error) {
         console.error('❌ buildGasReply error:', error.message);
-        return '<code>Error formatting gas prices</code>';
+        return '`Error formatting gas prices`';
     }
 }
 
@@ -850,13 +859,13 @@ function buildAlertsReply(alerts) {
     const { priceAlerts, timeReminders } = alerts;
     
     if (priceAlerts.length === 0 && timeReminders.length === 0) {
-        return '<code>No active alerts or reminders found.</code>';
+        return '`No active alerts or reminders found.`';
     }
 
-    let reply = '<b>Your Active Alerts & Reminders:</b>\n\n';
+    let reply = '*Your Active Alerts & Reminders:*\n\n';
 
     if (priceAlerts.length > 0) {
-        reply += '<b>🚨 Price Alerts:</b>\n';
+        reply += '*🚨 Price Alerts:*\n';
         priceAlerts.forEach((alert, index) => {
             reply += `${index + 1}. ${alert.symbol.toUpperCase()} ${alert.condition} $${alert.targetPrice.toLocaleString()}\n`;
         });
@@ -907,7 +916,7 @@ async function sendMessageToTopic(botToken, chatId, messageThreadId, text, callb
     const baseOptions = {
         chat_id: parseInt(chatId),
         text: text,
-        parse_mode: 'HTML',
+        parse_mode: 'Markdown',
         ...options
     };
 
@@ -987,7 +996,7 @@ async function sendPhotoToTopic(botToken, chatId, messageThreadId, photoUrl, cap
         chat_id: parseInt(chatId),
         photo: photoUrl,
         caption: caption,
-        parse_mode: 'HTML',
+        parse_mode: 'Markdown',
         reply_markup: replyMarkup
     };
 
@@ -1086,7 +1095,7 @@ async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, 
     const baseOptions = {
         chat_id: parseInt(chatId),
         message_id: parseInt(messageId),
-        parse_mode: 'HTML',
+        parse_mode: 'Markdown',
         reply_markup: replyMarkup
     };
 
