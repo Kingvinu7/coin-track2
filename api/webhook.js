@@ -264,25 +264,25 @@ const MENTION_CONFIG = {
     // Replace this with your specific group chat ID (including the minus sign)
     TARGET_GROUP_ID: -1001234567890, // TODO: Replace with your actual group ID
     
-    // Replace these with the 9 specific user IDs you want to mention
+    // Replace these with the 9 specific usernames (without @)
     CHOSEN_MEMBERS: [
-        123456789,   // TODO: Replace with actual user ID 1
-        987654321,   // TODO: Replace with actual user ID 2
-        111111111,   // TODO: Replace with actual user ID 3
-        222222222,   // TODO: Replace with actual user ID 4
-        333333333,   // TODO: Replace with actual user ID 5
-        444444444,   // TODO: Replace with actual user ID 6
-        555555555,   // TODO: Replace with actual user ID 7
-        666666666,   // TODO: Replace with actual user ID 8
-        777777777    // TODO: Replace with actual user ID 9
+        'username1',     // TODO: Replace with actual username 1
+        'username2',     // TODO: Replace with actual username 2
+        'username3',     // TODO: Replace with actual username 3
+        'username4',     // TODO: Replace with actual username 4
+        'username5',     // TODO: Replace with actual username 5
+        'username6',     // TODO: Replace with actual username 6
+        'username7',     // TODO: Replace with actual username 7
+        'username8',     // TODO: Replace with actual username 8
+        'username9'      // TODO: Replace with actual username 9
     ]
 };
 
-// Function to create mention text for the 9 chosen members
+// Function to create mention text for the 9 chosen members using usernames
 function createMentionText() {
     return MENTION_CONFIG.CHOSEN_MEMBERS
-        .map(userId => `[​](tg://user?id=${userId})`)
-        .join('');
+        .map(username => `@${username}`)
+        .join(' ');
 }
 
 // Function to check if @all command should work in this chat
