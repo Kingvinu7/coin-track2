@@ -262,7 +262,7 @@ async function getQuoteImageUrl(message, repliedToMessage) {
 // --- CUSTOM @ALL MENTION CONFIGURATION ---
 const MENTION_CONFIG = {
     // Replace this with your specific group chat ID (including the minus sign)
-    TARGET_GROUP_ID: -1001234567890, // TODO: Replace with your actual group ID
+    TARGET_GROUP_ID: -1001354282618, // TODO: Replace with your actual group ID
     
     // Replace these with the 9 specific usernames (without @)
     CHOSEN_MEMBERS: [
