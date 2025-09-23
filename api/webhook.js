@@ -1614,7 +1614,7 @@ export default async function handler(req, res) {
             console.log('🔄 Detected social media link, sending clean preview');
             
             const senderUsername = user.username || user.first_name || `User${user.id}`;
-            const escapedUsername = escapeMarkdownV2(senderUsername);
+            const escapedUsername = escapeMarkdown(senderUsername);
             
             const formattedMessage = `[Media Link](${linkData.alternativeUrl})\n\n[Original Link](${linkData.original}) sent by @${escapedUsername}`;
             
