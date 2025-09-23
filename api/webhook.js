@@ -17,20 +17,17 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// --- NEW: Escape Markdown V2 characters for safe Telegram sending ---
-function escapeMarkdownV2(text) {
+// --- NEW: Escape Markdown V1 characters for safe Telegram sending ---
+function escapeMarkdown(text) {
     if (!text) return '';
-    // Characters that need escaping in Telegram MarkdownV2
-    const escapeChars = '_*[]()~`>#+-=|{}.!\\';
-    let escaped = '';
-    for (const char of text) {
-        if (escapeChars.includes(char)) {
-            escaped += '\\' + char;
-        } else {
-            escaped += char;
-        }
-    }
-    return escaped;
+    // Only escape the most problematic characters for Telegram Markdown V1
+    // Be conservative to avoid breaking existing formatting
+    return text
+        .replace(/\\/g, '\\\\')
+        .replace(/\*/g, '\\*')
+        .replace(/_/g, '\\_')
+        .replace(/\[/g, '\\[')
+        .replace(/\]/g, '\\]');
 }
 
 // --- Simple Social Media Link Detection with Single Best Alternative ---
@@ -658,8 +655,15 @@ function buildSignature(firstPostData, currentPriceChange1h, chatId) {
     const emoji = currentPriceChange1h > 0 ? '😈' : '😡';
     const formattedMC = fmtBig(firstPostData.firstMarketCap);
     const telegramLink = `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${firstPostData.firstMessageId}`;
-    const escapedUsername = escapeMarkdownV2(firstPostData.firstUsername);
-    const usernameLink = `[@${escapedUsername}](${telegramLink})`;
+    
+    // For usernames in Markdown links, we need to be more careful about escaping
+    // Only escape the most critical characters that would break the link syntax
+    const safeUsername = firstPostData.firstUsername
+        .replace(/\\/g, '\\\\')
+        .replace(/\]/g, '\\]')
+        .replace(/\[/g, '\\[');
+    
+    const usernameLink = `[@${safeUsername}](${telegramLink})`;
 
     let timestampDate;
     if (firstPostData.firstTimestamp && typeof firstPostData.firstTimestamp.toDate === 'function') {
