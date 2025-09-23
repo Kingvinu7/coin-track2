@@ -30,6 +30,17 @@ function escapeMarkdown(text) {
         .replace(/\]/g, '\\]');
 }
 
+// --- NEW: Escape text for usernames (don't escape underscores in usernames) ---
+function escapeUsername(text) {
+    if (!text) return '';
+    // For usernames, we don't escape underscores as they're valid in Telegram usernames
+    return text
+        .replace(/\\/g, '\\\\')
+        .replace(/\*/g, '\\*')
+        .replace(/\[/g, '\\[')
+        .replace(/\]/g, '\\]');
+}
+
 // --- Simple Social Media Link Detection with Single Best Alternative ---
 function getSingleBestAlternative(text) {
     let alternativeUrl = text;
@@ -281,7 +292,8 @@ const MENTION_CONFIG = {
 // Function to create mention text for the 9 chosen members using usernames
 function createMentionText() {
     return MENTION_CONFIG.CHOSEN_MEMBERS
-        .map(username => `@${username}`)
+        .filter(username => username && !username.startsWith('username')) // Filter out placeholder usernames that start with 'username'
+        .map(username => `@${escapeUsername(username)}`)
         .join(' ');
 }
 
@@ -1737,15 +1749,45 @@ export default async function handler(req, res) {
             // Only work in the specific target group
             if (isValidMentionContext(chatId)) {
                 const mentionText = createMentionText();
+                
+                // FIXED: Add validation to ensure we have mentions to send
+                if (!mentionText || mentionText.trim() === '') {
+                    console.log(`⚠️ No valid usernames to mention in group ${chatId}`);
+                    return res.status(200).json({ ok: true, message: 'No valid usernames configured' });
+                }
+                
                 const senderName = user.first_name || user.username || 'Someone';
-                const message = `🔔 **Group Mention by ${senderName}**\n\n${mentionText}`;
+                // FIXED: Escape the sender name and use proper Markdown V1 syntax
+                const escapedSenderName = escapeUsername(senderName);
+                const message = `🔔 *Group Mention by ${escapedSenderName}*\n\n${mentionText}`;
                 
-                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, message, '', {
-                    parse_mode: 'Markdown'
-                });
+                // FIXED: Add message length validation
+                if (message.length > 4096) {
+                    console.error(`❌ Message too long: ${message.length} characters`);
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`❌ Mention message too long. Please configure fewer usernames.`');
+                    return res.status(200).json({ ok: false, error: 'Message too long' });
+                }
                 
-                console.log(`✅ @all mention sent in group ${chatId} by user ${user.id}`);
-                return res.status(200).json({ ok: true, message: '@all mention sent' });
+                try {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, message, '', {
+                        parse_mode: 'Markdown'
+                    });
+                    
+                    console.log(`✅ @all mention sent in group ${chatId} by user ${user.id}`);
+                    return res.status(200).json({ ok: true, message: '@all mention sent' });
+                } catch (error) {
+                    console.error(`❌ Error sending @all mention:`, error.response?.data || error.message);
+                    // Fallback: try sending without Markdown formatting
+                    try {
+                        const plainMessage = `🔔 Group Mention by ${senderName}\n\n${mentionText}`;
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, plainMessage);
+                        console.log(`✅ @all mention sent (plain text fallback) in group ${chatId}`);
+                        return res.status(200).json({ ok: true, message: '@all mention sent (fallback)' });
+                    } catch (fallbackError) {
+                        console.error(`❌ Fallback @all mention also failed:`, fallbackError.message);
+                        return res.status(500).json({ ok: false, error: 'Failed to send mention' });
+                    }
+                }
             } else {
                 // Silently ignore @all in other groups (no response)
                 console.log(`⚠️ @all command ignored in non-target group ${chatId}`);
