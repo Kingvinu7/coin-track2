@@ -259,6 +259,37 @@ async function getQuoteImageUrl(message, repliedToMessage) {
     }
 }
 
+// --- CUSTOM @ALL MENTION CONFIGURATION ---
+const MENTION_CONFIG = {
+    // Replace this with your specific group chat ID (including the minus sign)
+    TARGET_GROUP_ID: -1001234567890, // TODO: Replace with your actual group ID
+    
+    // Replace these with the 9 specific user IDs you want to mention
+    CHOSEN_MEMBERS: [
+        123456789,   // TODO: Replace with actual user ID 1
+        987654321,   // TODO: Replace with actual user ID 2
+        111111111,   // TODO: Replace with actual user ID 3
+        222222222,   // TODO: Replace with actual user ID 4
+        333333333,   // TODO: Replace with actual user ID 5
+        444444444,   // TODO: Replace with actual user ID 6
+        555555555,   // TODO: Replace with actual user ID 7
+        666666666,   // TODO: Replace with actual user ID 8
+        777777777    // TODO: Replace with actual user ID 9
+    ]
+};
+
+// Function to create mention text for the 9 chosen members
+function createMentionText() {
+    return MENTION_CONFIG.CHOSEN_MEMBERS
+        .map(userId => `[​](tg://user?id=${userId})`)
+        .join('');
+}
+
+// Function to check if @all command should work in this chat
+function isValidMentionContext(chatId) {
+    return parseInt(chatId) === MENTION_CONFIG.TARGET_GROUP_ID;
+}
+
 // Strong guarantees for common tickers
 const priority = {
     btc: "bitcoin",
@@ -1701,6 +1732,27 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
 
+        // Check for @all mention command first (before other filtering)
+        if (text.toLowerCase().trim() === '@all') {
+            // Only work in the specific target group
+            if (isValidMentionContext(chatId)) {
+                const mentionText = createMentionText();
+                const senderName = user.first_name || user.username || 'Someone';
+                const message = `🔔 **Group Mention by ${senderName}**\n\n${mentionText}`;
+                
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, message, '', {
+                    parse_mode: 'Markdown'
+                });
+                
+                console.log(`✅ @all mention sent in group ${chatId} by user ${user.id}`);
+                return res.status(200).json({ ok: true, message: '@all mention sent' });
+            } else {
+                // Silently ignore @all in other groups (no response)
+                console.log(`⚠️ @all command ignored in non-target group ${chatId}`);
+                return res.status(200).json({ ok: true, message: '@all ignored in wrong group' });
+            }
+        }
+
         // FIXED: Updated message filtering logic
         const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)+)$/;
@@ -2029,8 +2081,7 @@ I'll notify you at the specified time.`, 'reminder_set');
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     '`hey welcome fren! Type /help to know more about the commands.`');
             } else if (command === 'help') {
-                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
-                    `*Commands:*
+                let helpMessage = `*Commands:*
 [amount] [symbol] - Get a crypto price, e.g., \`2 eth\`
 /gas - Get current Ethereum gas prices
 /chart [symbol] - View a candlestick chart with timeframes, e.g., \`/chart eth\`
@@ -2044,13 +2095,25 @@ I'll notify you at the specified time.`, 'reminder_set');
 /remind "message" [time] - Set time reminder (IST), e.g., \`/remind "hello" 3pm\`
 /alerts - View your active alerts and reminders
 /cancel [price/time] [number] - Cancel specific alert, e.g., \`/cancel price 1\`
-/help - Show this message
+/help - Show this message`;
+
+                // Only show @all command in the target group
+                if (isValidMentionContext(chatId)) {
+                    helpMessage += `
+
+*Group Mention:*
+@all - Mention specific group members (works only in this group)`;
+                }
+
+                helpMessage += `
 
 *Other features:*
 - Send a token address to get token info
 - Use simple math, e.g., \`5 * 10\`
 - **Multi-token support**: \`1 eth 2 btc 0.5 doge\`
-- **Auto-enhances Twitter/X, Instagram, TikTok, Reddit links for better previews**`);
+- **Auto-enhances Twitter/X, Instagram, TikTok, Reddit links for better previews**`;
+
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, helpMessage);
     
             } else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
