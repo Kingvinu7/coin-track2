@@ -98,21 +98,22 @@ async function checkPriceAlerts() {
                 
                 const usernameText = alert.username ? `@${alert.username}` : '';
 
-const message = `🚨 **PRICE ALERT TRIGGERED**
+const message = `🚨 <b>PRICE ALERT TRIGGERED</b>
 
 ${alert.symbol.toUpperCase()} is now ${alert.condition} $${alert.targetPrice.toLocaleString()}! ${usernameText}
 
-\`Current Price: $${currentPrice.toLocaleString()}\`
-\`1H Change: ${emoji} ${changeText}\`
-\`Market Cap: $${coin.market_cap ? (coin.market_cap / 1e9).toFixed(2) + 'B' : 'N/A'}\`
+<code>Current Price: $${currentPrice.toLocaleString()}</code>
+<code>1H Change: ${emoji} ${changeText}</code>
+<code>Market Cap: $${coin.market_cap ? (coin.market_cap / 1e9).toFixed(2) + 'B' : 'N/A'}</code>
 
 Your alert has been automatically removed.`;
 
                 try {
+                    // FIXED: Use HTML instead of Markdown to avoid entity parsing errors
                     await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
                         chat_id: parseInt(alert.chatId),
                         text: message,
-                        parse_mode: 'Markdown'
+                        parse_mode: 'HTML'
                     });
                     
                     // Deactivate alert
@@ -152,19 +153,20 @@ async function checkTimeReminders() {
             
             const usernameText = reminder.username ? `@${reminder.username}` : '';
             
-            const message = `⏰ **REMINDER** 
+            const message = `⏰ <b>REMINDER</b> 
 
 ${reminder.message}  
 
-set By:  ${usernameText}
+Set By: ${usernameText}
 
-*Set on: ${reminder.createdAt.toDate().toLocaleDateString()}*`;
+<i>Set on: ${reminder.createdAt.toDate().toLocaleDateString()}</i>`;
 
             try {
+                // FIXED: Use HTML instead of Markdown to avoid entity parsing errors
                 await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
                     chat_id: parseInt(reminder.chatId),
                     text: message,
-                    parse_mode: 'Markdown'
+                    parse_mode: 'HTML'
                 });
                 
                 // Deactivate reminder

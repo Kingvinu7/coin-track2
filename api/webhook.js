@@ -17,28 +17,46 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// --- NEW: Escape Markdown V1 characters for safe Telegram sending ---
+// --- FIXED: Comprehensive Markdown V1 escaping for safe Telegram sending ---
 function escapeMarkdown(text) {
     if (!text) return '';
-    // Only escape the most problematic characters for Telegram Markdown V1
-    // Be conservative to avoid breaking existing formatting
+    // Escape ALL Markdown V1 special characters for Telegram
     return text
-        .replace(/\\/g, '\\\\')
-        .replace(/\*/g, '\\*')
-        .replace(/_/g, '\\_')
-        .replace(/\[/g, '\\[')
-        .replace(/\]/g, '\\]');
+        .replace(/\\/g, '\\\\')  // Backslash must be first
+        .replace(/\*/g, '\\*')   // Bold
+        .replace(/_/g, '\\_')    // Italic
+        .replace(/\[/g, '\\[')   // Link start
+        .replace(/\]/g, '\\]')   // Link end
+        .replace(/\(/g, '\\(')   // Link URL start
+        .replace(/\)/g, '\\)')   // Link URL end
+        .replace(/~/g, '\\~')    // Strikethrough
+        .replace(/`/g, '\\`')    // Code
+        .replace(/>/g, '\\>')    // Quote
+        .replace(/#/g, '\\#')    // Header
+        .replace(/\+/g, '\\+')   // Plus
+        .replace(/-/g, '\\-')    // Minus
+        .replace(/=/g, '\\=')    // Equal
+        .replace(/\|/g, '\\|')   // Pipe
+        .replace(/\{/g, '\\{')   // Curly brace
+        .replace(/\}/g, '\\}')   // Curly brace
+        .replace(/\./g, '\\.')   // Dot
+        .replace(/!/g, '\\!');   // Exclamation
 }
 
-// --- NEW: Escape text for usernames (don't escape underscores in usernames) ---
+// --- FIXED: Safe username escaping for mentions ---
 function escapeUsername(text) {
     if (!text) return '';
-    // For usernames, we don't escape underscores as they're valid in Telegram usernames
+    // For usernames in mentions, we need to be very careful
+    // Only escape characters that would break Markdown parsing
     return text
-        .replace(/\\/g, '\\\\')
-        .replace(/\*/g, '\\*')
-        .replace(/\[/g, '\\[')
-        .replace(/\]/g, '\\]');
+        .replace(/\\/g, '\\\\')  // Backslash must be first
+        .replace(/\*/g, '\\*')   // Bold
+        .replace(/\[/g, '\\[')   // Link start  
+        .replace(/\]/g, '\\]')   // Link end
+        .replace(/\(/g, '\\(')   // Link URL start
+        .replace(/\)/g, '\\)')   // Link URL end
+        .replace(/`/g, '\\`')    // Code
+        .replace(/~/g, '\\~');   // Strikethrough
 }
 
 // --- Simple Social Media Link Detection with Single Best Alternative ---
@@ -289,10 +307,27 @@ const MENTION_CONFIG = {
     ]
 };
 
-// Function to create mention text for the 9 chosen members using usernames
+// FIXED: Function to create mention text with better validation and escaping
 function createMentionText() {
-    return MENTION_CONFIG.CHOSEN_MEMBERS
-        .filter(username => username && !username.startsWith('username')) // Filter out placeholder usernames that start with 'username'
+    const validUsernames = MENTION_CONFIG.CHOSEN_MEMBERS
+        .filter(username => {
+            // More robust validation
+            return username && 
+                   typeof username === 'string' && 
+                   username.trim() !== '' &&
+                   !username.startsWith('username') && // Filter out placeholder usernames
+                   username.length <= 32 && // Telegram username max length
+                   /^[a-zA-Z0-9_]+$/.test(username); // Valid username characters only
+        });
+    
+    if (validUsernames.length === 0) {
+        console.warn('⚠️ No valid usernames found in MENTION_CONFIG.CHOSEN_MEMBERS');
+        return '';
+    }
+    
+    console.log(`📝 Creating mention text for ${validUsernames.length} valid usernames:`, validUsernames);
+    
+    return validUsernames
         .map(username => `@${escapeUsername(username)}`)
         .join(' ');
 }
@@ -1744,8 +1779,8 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
 
-        // Check for @all mention command first (before other filtering)
-        if (text.toLowerCase().trim() === '@all') {
+        // ENHANCED: Check for @all mention command anywhere in the message
+        if (text.toLowerCase().includes('@all')) {
             // Only work in the specific target group
             if (isValidMentionContext(chatId)) {
                 const mentionText = createMentionText();
@@ -1757,36 +1792,107 @@ export default async function handler(req, res) {
                 }
                 
                 const senderName = user.first_name || user.username || 'Someone';
-                // FIXED: Escape the sender name and use proper Markdown V1 syntax
-                const escapedSenderName = escapeUsername(senderName);
-                const message = `🔔 *Group Mention by ${escapedSenderName}*\n\n${mentionText}`;
                 
-                // FIXED: Add message length validation
-                if (message.length > 4096) {
-                    console.error(`❌ Message too long: ${message.length} characters`);
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`❌ Mention message too long. Please configure fewer usernames.`');
-                    return res.status(200).json({ ok: false, error: 'Message too long' });
-                }
+                // ENHANCED: Extract custom message by removing @all from the original text
+                const customMessage = text.replace(/@all/gi, '').trim();
+                const hasCustomMessage = customMessage.length > 0;
                 
-                try {
-                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, message, '', {
-                        parse_mode: 'Markdown'
-                    });
-                    
-                    console.log(`✅ @all mention sent in group ${chatId} by user ${user.id}`);
-                    return res.status(200).json({ ok: true, message: '@all mention sent' });
-                } catch (error) {
-                    console.error(`❌ Error sending @all mention:`, error.response?.data || error.message);
-                    // Fallback: try sending without Markdown formatting
+                // ENHANCED: Format message based on whether there's custom content
+                const sendMentionMessage = async () => {
+                    // Method 1: Try with Markdown formatting
                     try {
-                        const plainMessage = `🔔 Group Mention by ${senderName}\n\n${mentionText}`;
-                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, plainMessage);
-                        console.log(`✅ @all mention sent (plain text fallback) in group ${chatId}`);
-                        return res.status(200).json({ ok: true, message: '@all mention sent (fallback)' });
-                    } catch (fallbackError) {
-                        console.error(`❌ Fallback @all mention also failed:`, fallbackError.message);
-                        return res.status(500).json({ ok: false, error: 'Failed to send mention' });
+                        const escapedSenderName = escapeUsername(senderName);
+                        let markdownMessage;
+                        
+                        if (hasCustomMessage) {
+                            // Custom message format: "Message content\n@mentions\n\nMentioned by User"
+                            const escapedCustomMessage = escapeMarkdown(customMessage);
+                            markdownMessage = `${escapedCustomMessage}\n${mentionText}\n\n*Mentioned by ${escapedSenderName}*`;
+                        } else {
+                            // Default format: "Group Mention by User\n@mentions"
+                            markdownMessage = `🔔 *Group Mention by ${escapedSenderName}*\n\n${mentionText}`;
+                        }
+                        
+                        // Validate message length
+                        if (markdownMessage.length > 4096) {
+                            throw new Error('Message too long');
+                        }
+                        
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, markdownMessage, '', {
+                            parse_mode: 'Markdown'
+                        });
+                        console.log(`✅ @all mention sent (Markdown) in group ${chatId} by user ${user.id}`);
+                        return { success: true, method: 'Markdown' };
+                    } catch (markdownError) {
+                        console.warn(`⚠️ Markdown mention failed:`, markdownError.response?.data || markdownError.message);
+                        
+                        // Method 2: Try with HTML formatting
+                        try {
+                            const htmlSenderName = senderName
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;');
+                            
+                            // Create HTML version of mentions
+                            const htmlMentionText = MENTION_CONFIG.CHOSEN_MEMBERS
+                                .filter(username => username && !username.startsWith('username'))
+                                .map(username => `@${username}`) // Don't escape in HTML mode
+                                .join(' ');
+                            
+                            let htmlMessage;
+                            if (hasCustomMessage) {
+                                // Custom message format with HTML
+                                const htmlCustomMessage = customMessage
+                                    .replace(/&/g, '&amp;')
+                                    .replace(/</g, '&lt;')
+                                    .replace(/>/g, '&gt;');
+                                htmlMessage = `${htmlCustomMessage}\n${htmlMentionText}\n\n<i>Mentioned by ${htmlSenderName}</i>`;
+                            } else {
+                                // Default format with HTML
+                                htmlMessage = `🔔 <b>Group Mention by ${htmlSenderName}</b>\n\n${htmlMentionText}`;
+                            }
+                            
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, htmlMessage, '', {
+                                parse_mode: 'HTML'
+                            });
+                            console.log(`✅ @all mention sent (HTML) in group ${chatId} by user ${user.id}`);
+                            return { success: true, method: 'HTML' };
+                        } catch (htmlError) {
+                            console.warn(`⚠️ HTML mention failed:`, htmlError.response?.data || htmlError.message);
+                            
+                            // Method 3: Try with plain text (no formatting)
+                            try {
+                                const plainMentionText = MENTION_CONFIG.CHOSEN_MEMBERS
+                                    .filter(username => username && !username.startsWith('username'))
+                                    .map(username => `@${username}`)
+                                    .join(' ');
+                                
+                                let plainMessage;
+                                if (hasCustomMessage) {
+                                    // Custom message format with plain text
+                                    plainMessage = `${customMessage}\n${plainMentionText}\n\nMentioned by ${senderName}`;
+                                } else {
+                                    // Default format with plain text
+                                    plainMessage = `🔔 Group Mention by ${senderName}\n\n${plainMentionText}`;
+                                }
+                                
+                                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, plainMessage);
+                                console.log(`✅ @all mention sent (plain text) in group ${chatId} by user ${user.id}`);
+                                return { success: true, method: 'Plain Text' };
+                            } catch (plainError) {
+                                console.error(`❌ All mention methods failed:`, plainError.message);
+                                return { success: false, error: plainError.message };
+                            }
+                        }
                     }
+                };
+                
+                const result = await sendMentionMessage();
+                
+                if (result.success) {
+                    return res.status(200).json({ ok: true, message: `@all mention sent (${result.method})` });
+                } else {
+                    return res.status(500).json({ ok: false, error: 'Failed to send mention after all attempts' });
                 }
             } else {
                 // Silently ignore @all in other groups (no response)
@@ -2144,7 +2250,10 @@ I'll notify you at the specified time.`, 'reminder_set');
                     helpMessage += `
 
 *Group Mention:*
-@all - Mention specific group members (works only in this group)`;
+@all - Mention specific group members (works only in this group)
+*Enhanced @all usage:*
+- \`@all\` - Simple group mention
+- \`Hello @all today is Wednesday\` - Custom message with mentions`;
                 }
 
                 helpMessage += `
