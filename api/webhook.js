@@ -1842,6 +1842,8 @@ export default async function handler(req, res) {
                         
                         console.log(`🔍 DEBUG - About to send HTML message: "${htmlMessage}"`);
                         console.log(`🔍 DEBUG - Mention text in message: "${mentionText}"`);
+                        console.log(`🔍 DEBUG - Individual usernames being sent:`, mentionText.split(' '));
+                        console.log(`🔍 DEBUG - Looking for underscores in mention text:`, mentionText.includes('_') ? 'FOUND UNDERSCORES' : 'NO UNDERSCORES');
                         
                         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, htmlMessage, '', {
                             parse_mode: 'HTML'
