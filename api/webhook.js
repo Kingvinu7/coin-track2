@@ -1779,8 +1779,8 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
 
-        // Check for @all mention command first (before other filtering)
-        if (text.toLowerCase().trim() === '@all') {
+        // ENHANCED: Check for @all mention command anywhere in the message
+        if (text.toLowerCase().includes('@all')) {
             // Only work in the specific target group
             if (isValidMentionContext(chatId)) {
                 const mentionText = createMentionText();
@@ -1793,12 +1793,25 @@ export default async function handler(req, res) {
                 
                 const senderName = user.first_name || user.username || 'Someone';
                 
-                // FIXED: Try multiple message formats with proper error handling
+                // ENHANCED: Extract custom message by removing @all from the original text
+                const customMessage = text.replace(/@all/gi, '').trim();
+                const hasCustomMessage = customMessage.length > 0;
+                
+                // ENHANCED: Format message based on whether there's custom content
                 const sendMentionMessage = async () => {
                     // Method 1: Try with Markdown formatting
                     try {
                         const escapedSenderName = escapeUsername(senderName);
-                        const markdownMessage = `🔔 *Group Mention by ${escapedSenderName}*\n\n${mentionText}`;
+                        let markdownMessage;
+                        
+                        if (hasCustomMessage) {
+                            // Custom message format: "Message content\n@mentions\n\nMentioned by User"
+                            const escapedCustomMessage = escapeMarkdown(customMessage);
+                            markdownMessage = `${escapedCustomMessage}\n${mentionText}\n\n*Mentioned by ${escapedSenderName}*`;
+                        } else {
+                            // Default format: "Group Mention by User\n@mentions"
+                            markdownMessage = `🔔 *Group Mention by ${escapedSenderName}*\n\n${mentionText}`;
+                        }
                         
                         // Validate message length
                         if (markdownMessage.length > 4096) {
@@ -1820,13 +1833,24 @@ export default async function handler(req, res) {
                                 .replace(/</g, '&lt;')
                                 .replace(/>/g, '&gt;');
                             
-                            // Create HTML version of mentions (without @ symbols for HTML)
+                            // Create HTML version of mentions
                             const htmlMentionText = MENTION_CONFIG.CHOSEN_MEMBERS
                                 .filter(username => username && !username.startsWith('username'))
                                 .map(username => `@${username}`) // Don't escape in HTML mode
                                 .join(' ');
                             
-                            const htmlMessage = `🔔 <b>Group Mention by ${htmlSenderName}</b>\n\n${htmlMentionText}`;
+                            let htmlMessage;
+                            if (hasCustomMessage) {
+                                // Custom message format with HTML
+                                const htmlCustomMessage = customMessage
+                                    .replace(/&/g, '&amp;')
+                                    .replace(/</g, '&lt;')
+                                    .replace(/>/g, '&gt;');
+                                htmlMessage = `${htmlCustomMessage}\n${htmlMentionText}\n\n<i>Mentioned by ${htmlSenderName}</i>`;
+                            } else {
+                                // Default format with HTML
+                                htmlMessage = `🔔 <b>Group Mention by ${htmlSenderName}</b>\n\n${htmlMentionText}`;
+                            }
                             
                             await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, htmlMessage, '', {
                                 parse_mode: 'HTML'
@@ -1843,7 +1867,14 @@ export default async function handler(req, res) {
                                     .map(username => `@${username}`)
                                     .join(' ');
                                 
-                                const plainMessage = `🔔 Group Mention by ${senderName}\n\n${plainMentionText}`;
+                                let plainMessage;
+                                if (hasCustomMessage) {
+                                    // Custom message format with plain text
+                                    plainMessage = `${customMessage}\n${plainMentionText}\n\nMentioned by ${senderName}`;
+                                } else {
+                                    // Default format with plain text
+                                    plainMessage = `🔔 Group Mention by ${senderName}\n\n${plainMentionText}`;
+                                }
                                 
                                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, plainMessage);
                                 console.log(`✅ @all mention sent (plain text) in group ${chatId} by user ${user.id}`);
@@ -2219,7 +2250,10 @@ I'll notify you at the specified time.`, 'reminder_set');
                     helpMessage += `
 
 *Group Mention:*
-@all - Mention specific group members (works only in this group)`;
+@all - Mention specific group members (works only in this group)
+*Enhanced @all usage:*
+- \`@all\` - Simple group mention
+- \`Hello @all today is Wednesday\` - Custom message with mentions`;
                 }
 
                 helpMessage += `
