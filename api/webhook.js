@@ -327,19 +327,26 @@ function createMentionText(parseMode = 'markdown') {
     
     console.log(`📝 Creating mention text for ${validUsernames.length} valid usernames (${parseMode} mode):`, validUsernames);
     
-    return validUsernames
-        .map(username => {
-            switch(parseMode.toLowerCase()) {
-                case 'markdown':
-                    return `@${escapeUsername(username)}`;
-                case 'html':
-                case 'plain':
-                default:
-                    // For HTML and plain text modes, don't escape usernames - preserve underscores
-                    return `@${username}`;
-            }
-        })
-        .join(' ');
+    const mentionArray = validUsernames.map(username => {
+        let processedUsername;
+        switch(parseMode.toLowerCase()) {
+            case 'markdown':
+                processedUsername = escapeUsername(username);
+                console.log(`🔍 DEBUG - Original: "${username}" -> Escaped: "${processedUsername}"`);
+                return `@${processedUsername}`;
+            case 'html':
+            case 'plain':
+            default:
+                // For HTML and plain text modes, don't escape usernames - preserve underscores
+                console.log(`🔍 DEBUG - Original: "${username}" -> No escaping: "${username}"`);
+                return `@${username}`;
+        }
+    });
+    
+    const finalMentionText = mentionArray.join(' ');
+    console.log(`🔍 DEBUG - Final mention text: "${finalMentionText}"`);
+    
+    return finalMentionText;
 }
 
 // Function to check if @all command should work in this chat
@@ -1805,9 +1812,9 @@ export default async function handler(req, res) {
                 
                 // ENHANCED: Format message based on whether there's custom content
                 const sendMentionMessage = async () => {
-                    // Method 1: Try with Markdown formatting
+                    // Method 1: Try with HTML formatting first (bypassing markdown issues)
                     try {
-                        const mentionText = createMentionText('markdown');
+                        const mentionText = createMentionText('html');
                         
                         // FIXED: Add validation to ensure we have mentions to send
                         if (!mentionText || mentionText.trim() === '') {
@@ -1815,66 +1822,74 @@ export default async function handler(req, res) {
                             return { success: false, error: 'No valid usernames configured' };
                         }
                         
-                        const escapedSenderName = escapeUsername(senderName);
-                        let markdownMessage;
+                        // HTML formatting doesn't need special escaping for usernames
+                        const senderName_safe = senderName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        let htmlMessage;
                         
                         if (hasCustomMessage) {
                             // Custom message format: "Message content\n@mentions\n\nMentioned by User"
-                            const escapedCustomMessage = escapeMarkdown(customMessage);
-                            markdownMessage = `${escapedCustomMessage}\n${mentionText}\n\n*Mentioned by ${escapedSenderName}*`;
+                            const customMessage_safe = customMessage.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            htmlMessage = `${customMessage_safe}\n${mentionText}\n\n<i>Mentioned by ${senderName_safe}</i>`;
                         } else {
                             // Default format: "Group Mention by User\n@mentions"
-                            markdownMessage = `🔔 *Group Mention by ${escapedSenderName}*\n\n${mentionText}`;
+                            htmlMessage = `🔔 <b>Group Mention by ${senderName_safe}</b>\n\n${mentionText}`;
                         }
                         
                         // Validate message length
-                        if (markdownMessage.length > 4096) {
+                        if (htmlMessage.length > 4096) {
                             throw new Error('Message too long');
                         }
                         
-                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, markdownMessage, '', {
-                            parse_mode: 'Markdown'
-                        });
-                        console.log(`✅ @all mention sent (Markdown) in group ${chatId} by user ${user.id}`);
-                        return { success: true, method: 'Markdown' };
-                    } catch (markdownError) {
-                        console.warn(`⚠️ Markdown mention failed:`, markdownError.response?.data || markdownError.message);
+                        console.log(`🔍 DEBUG - About to send HTML message: "${htmlMessage}"`);
+                        console.log(`🔍 DEBUG - Mention text in message: "${mentionText}"`);
+                        console.log(`🔍 DEBUG - Individual usernames being sent:`, mentionText.split(' '));
+                        console.log(`🔍 DEBUG - Looking for underscores in mention text:`, mentionText.includes('_') ? 'FOUND UNDERSCORES' : 'NO UNDERSCORES');
                         
-                        // Method 2: Try with HTML formatting
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, htmlMessage, '', {
+                            parse_mode: 'HTML'
+                        });
+                        console.log(`✅ @all mention sent (HTML) in group ${chatId} by user ${user.id}`);
+                        return { success: true, method: 'HTML' };
+                    } catch (htmlError) {
+                        console.warn(`⚠️ HTML mention failed:`, htmlError.response?.data || htmlError.message);
+                        
+                        // Method 2: Try with Markdown formatting
                         try {
-                            const htmlMentionText = createMentionText('html');
+                            const markdownMentionText = createMentionText('markdown');
                             
                             // FIXED: Add validation to ensure we have mentions to send
-                            if (!htmlMentionText || htmlMentionText.trim() === '') {
+                            if (!markdownMentionText || markdownMentionText.trim() === '') {
                                 console.log(`⚠️ No valid usernames to mention in group ${chatId}`);
                                 return { success: false, error: 'No valid usernames configured' };
                             }
                             
-                            const htmlSenderName = senderName
-                                .replace(/&/g, '&amp;')
-                                .replace(/</g, '&lt;')
-                                .replace(/>/g, '&gt;');
+                            const escapedSenderName = escapeUsername(senderName);
+                            let markdownMessage;
                             
-                            let htmlMessage;
                             if (hasCustomMessage) {
-                                // Custom message format with HTML
-                                const htmlCustomMessage = customMessage
-                                    .replace(/&/g, '&amp;')
-                                    .replace(/</g, '&lt;')
-                                    .replace(/>/g, '&gt;');
-                                htmlMessage = `${htmlCustomMessage}\n${htmlMentionText}\n\n<i>Mentioned by ${htmlSenderName}</i>`;
+                                // Custom message format: "Message content\n@mentions\n\nMentioned by User"
+                                const escapedCustomMessage = escapeMarkdown(customMessage);
+                                markdownMessage = `${escapedCustomMessage}\n${markdownMentionText}\n\n*Mentioned by ${escapedSenderName}*`;
                             } else {
-                                // Default format with HTML
-                                htmlMessage = `🔔 <b>Group Mention by ${htmlSenderName}</b>\n\n${htmlMentionText}`;
+                                // Default format: "Group Mention by User\n@mentions"
+                                markdownMessage = `🔔 *Group Mention by ${escapedSenderName}*\n\n${markdownMentionText}`;
                             }
                             
-                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, htmlMessage, '', {
-                                parse_mode: 'HTML'
+                            // Validate message length
+                            if (markdownMessage.length > 4096) {
+                                throw new Error('Message too long');
+                            }
+                            
+                            console.log(`🔍 DEBUG - About to send Markdown fallback message: "${markdownMessage}"`);
+                            console.log(`🔍 DEBUG - Mention text in fallback message: "${markdownMentionText}"`);
+                            
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, markdownMessage, '', {
+                                parse_mode: 'Markdown'
                             });
-                            console.log(`✅ @all mention sent (HTML) in group ${chatId} by user ${user.id}`);
-                            return { success: true, method: 'HTML' };
-                        } catch (htmlError) {
-                            console.warn(`⚠️ HTML mention failed:`, htmlError.response?.data || htmlError.message);
+                            console.log(`✅ @all mention sent (Markdown) in group ${chatId} by user ${user.id}`);
+                            return { success: true, method: 'Markdown' };
+                        } catch (markdownError) {
+                            console.warn(`⚠️ Markdown mention failed:`, markdownError.response?.data || markdownError.message);
                             
                             // Method 3: Try with plain text (no formatting)
                             try {
