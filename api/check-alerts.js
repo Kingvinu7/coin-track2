@@ -40,7 +40,7 @@ function createMentionText() {
     }
     
     return validUsernames
-        .map(username => `@${escapeUsername(username)}`)
+        .map(username => `@${username}`) // Don't escape in HTML mode
         .join(' ');
 }
 
