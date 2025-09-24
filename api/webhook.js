@@ -295,15 +295,15 @@ const MENTION_CONFIG = {
     
     // Replace these with the 9 specific usernames (without @)
     CHOSEN_MEMBERS: [
-        'remindmeof',     // TODO: Replace with actual username 1
-        'Phanes_bot',     // TODO: Replace with actual username 2
-        'RickBurpBot',     // TODO: Replace with actual username 3
-        'austrianbae250',     // TODO: Replace with actual username 4
-        'username5',     // TODO: Replace with actual username 5
-        'username6',     // TODO: Replace with actual username 6
-        'username7',     // TODO: Replace with actual username 7
-        'username8',     // TODO: Replace with actual username 8
-        'username9'      // TODO: Replace with actual username 9
+        'KiNGViNU7',
+        'Xeron888',
+        'RemindMeOfThis',
+        'austrianbae250',
+        'Ferno_x',
+        'Ananthu_VB',
+        'Oxshahid13',
+        'unknownking7',
+        'BeastIncarnate7'
     ]
 };
 

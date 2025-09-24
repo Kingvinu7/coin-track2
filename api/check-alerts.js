@@ -5,15 +5,15 @@ import axios from 'axios';
 const MENTION_CONFIG = {
     TARGET_GROUP_ID: -1001354282618,
     CHOSEN_MEMBERS: [
-        'anything_notslava_bot',
-        'Phanesbot',
-        'RickBurpBot',
-        'username4',
-        'username5',
-        'username6',
-        'username7',
-        'username8',
-        'username9'
+        'KiNGViNU7',
+        'Xeron888',
+        'RemindMeOfThis',
+        'austrianbae250',
+        'Ferno_x',
+        'Ananthu_VB',
+        'Oxshahid13',
+        'unknownking7',
+        'BeastIncarnate7'
     ]
 };
 
@@ -40,7 +40,7 @@ function createMentionText() {
     }
     
     return validUsernames
-        .map(username => `@${escapeUsername(username)}`)
+        .map(username => `@${username}`) // Don't escape in HTML mode
         .join(' ');
 }
 
