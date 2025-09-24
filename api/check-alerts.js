@@ -9,7 +9,7 @@ const MENTION_CONFIG = {
         'Xeron888',
         'RemindMeOfThis',
         'austrianbae250',
-        'Ferno_x',
+        'ferno_x',
         'Ananthu_VB',
         'Oxshahid13',
         'unknownking7',
@@ -20,7 +20,12 @@ const MENTION_CONFIG = {
 // Helper functions for mentions (same as webhook.js)
 function escapeUsername(username) {
     if (!username || typeof username !== 'string') return '';
-    return username.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+    // For HTML mode (used in alerts), don't escape underscores as they're valid in usernames
+    // Only escape characters that would break HTML parsing
+    return username
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function createMentionText() {

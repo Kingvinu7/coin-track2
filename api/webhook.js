@@ -299,7 +299,7 @@ const MENTION_CONFIG = {
         'Xeron888',
         'RemindMeOfThis',
         'austrianbae250',
-        'Ferno_x',
+        'ferno_x',
         'Ananthu_VB',
         'Oxshahid13',
         'unknownking7',
