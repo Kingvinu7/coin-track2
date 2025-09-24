@@ -1779,8 +1779,12 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true });
         }
 
+        // FIXED: Move command detection before @all processing to prevent conflicts
+        const isCommand = text.startsWith('/') || text.startsWith('.');
+
         // ENHANCED: Check for @all mention command anywhere in the message
-        if (text.toLowerCase().includes('@all')) {
+        // BUT ONLY if it's not part of a command (like /remind)
+        if (text.toLowerCase().includes('@all') && !isCommand) {
             // Only work in the specific target group
             if (isValidMentionContext(chatId)) {
                 const mentionText = createMentionText();
@@ -1902,7 +1906,6 @@ export default async function handler(req, res) {
         }
 
         // FIXED: Updated message filtering logic
-        const isCommand = text.startsWith('/') || text.startsWith('.');
         const mathRegex = /^([\d.\s]+(?:[+\-*/][\d.\s]+)+)$/;
         const isCalculation = mathRegex.test(text);
         
