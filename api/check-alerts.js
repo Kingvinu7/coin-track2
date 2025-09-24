@@ -1,6 +1,53 @@
 import admin from 'firebase-admin';
 import axios from 'axios';
 
+// Mention configuration (same as webhook.js)
+const MENTION_CONFIG = {
+    TARGET_GROUP_ID: -1001354282618,
+    CHOSEN_MEMBERS: [
+        'anything_notslava_bot',
+        'Phanesbot',
+        'RickBurpBot',
+        'username4',
+        'username5',
+        'username6',
+        'username7',
+        'username8',
+        'username9'
+    ]
+};
+
+// Helper functions for mentions (same as webhook.js)
+function escapeUsername(username) {
+    if (!username || typeof username !== 'string') return '';
+    return username.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+}
+
+function createMentionText() {
+    const validUsernames = MENTION_CONFIG.CHOSEN_MEMBERS
+        .filter(username => {
+            return username && 
+                   typeof username === 'string' && 
+                   username.trim() !== '' &&
+                   !username.startsWith('username') &&
+                   username.length <= 32 &&
+                   /^[a-zA-Z0-9_]+$/.test(username);
+        });
+    
+    if (validUsernames.length === 0) {
+        console.warn('⚠️ No valid usernames found in MENTION_CONFIG.CHOSEN_MEMBERS');
+        return '';
+    }
+    
+    return validUsernames
+        .map(username => `@${escapeUsername(username)}`)
+        .join(' ');
+}
+
+function isValidMentionContext(chatId) {
+    return parseInt(chatId) === MENTION_CONFIG.TARGET_GROUP_ID;
+}
+
 // Initialize Firebase (same as main bot)
 if (!admin.apps.length) {
     try {
@@ -153,9 +200,26 @@ async function checkTimeReminders() {
             
             const usernameText = reminder.username ? `@${reminder.username}` : '';
             
+            // ENHANCED: Handle @all mentions in reminder messages
+            let processedMessage = reminder.message;
+            let additionalMentions = '';
+            
+            // Check if reminder message contains @all and if we're in the right chat
+            if (reminder.message.toLowerCase().includes('@all') && isValidMentionContext(reminder.chatId)) {
+                const mentionText = createMentionText();
+                if (mentionText && mentionText.trim() !== '') {
+                    // Remove @all from the message and add actual mentions
+                    processedMessage = reminder.message.replace(/@all/gi, '').trim();
+                    additionalMentions = `\n\n${mentionText}`;
+                    console.log(`✅ Processing @all mention in reminder for chat ${reminder.chatId}`);
+                } else {
+                    console.log(`⚠️ No valid usernames for @all mention in reminder`);
+                }
+            }
+            
             const message = `⏰ <b>REMINDER</b> 
 
-${reminder.message}  
+${processedMessage}${additionalMentions}
 
 Set By: ${usernameText}
 
