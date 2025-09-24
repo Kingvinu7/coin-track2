@@ -295,10 +295,10 @@ const MENTION_CONFIG = {
     
     // Replace these with the 9 specific usernames (without @)
     CHOSEN_MEMBERS: [
-        'anything_notslava_bot',     // TODO: Replace with actual username 1
-        'Phanesbot',     // TODO: Replace with actual username 2
+        'remindmeof',     // TODO: Replace with actual username 1
+        'Phanes_bot',     // TODO: Replace with actual username 2
         'RickBurpBot',     // TODO: Replace with actual username 3
-        'username4',     // TODO: Replace with actual username 4
+        'austrianbae250',     // TODO: Replace with actual username 4
         'username5',     // TODO: Replace with actual username 5
         'username6',     // TODO: Replace with actual username 6
         'username7',     // TODO: Replace with actual username 7
