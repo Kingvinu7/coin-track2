@@ -307,8 +307,8 @@ const MENTION_CONFIG = {
     ]
 };
 
-// FIXED: Function to create mention text with better validation and escaping
-function createMentionText() {
+// FIXED: Function to create mention text with better validation and escaping for different parse modes
+function createMentionText(parseMode = 'markdown') {
     const validUsernames = MENTION_CONFIG.CHOSEN_MEMBERS
         .filter(username => {
             // More robust validation
@@ -325,10 +325,20 @@ function createMentionText() {
         return '';
     }
     
-    console.log(`📝 Creating mention text for ${validUsernames.length} valid usernames:`, validUsernames);
+    console.log(`📝 Creating mention text for ${validUsernames.length} valid usernames (${parseMode} mode):`, validUsernames);
     
     return validUsernames
-        .map(username => `@${escapeUsername(username)}`)
+        .map(username => {
+            switch(parseMode.toLowerCase()) {
+                case 'markdown':
+                    return `@${escapeUsername(username)}`;
+                case 'html':
+                case 'plain':
+                default:
+                    // For HTML and plain text modes, don't escape usernames - preserve underscores
+                    return `@${username}`;
+            }
+        })
         .join(' ');
 }
 
@@ -1787,14 +1797,6 @@ export default async function handler(req, res) {
         if (text.toLowerCase().includes('@all') && !isCommand) {
             // Only work in the specific target group
             if (isValidMentionContext(chatId)) {
-                const mentionText = createMentionText();
-                
-                // FIXED: Add validation to ensure we have mentions to send
-                if (!mentionText || mentionText.trim() === '') {
-                    console.log(`⚠️ No valid usernames to mention in group ${chatId}`);
-                    return res.status(200).json({ ok: true, message: 'No valid usernames configured' });
-                }
-                
                 const senderName = user.first_name || user.username || 'Someone';
                 
                 // ENHANCED: Extract custom message by removing @all from the original text
@@ -1805,6 +1807,14 @@ export default async function handler(req, res) {
                 const sendMentionMessage = async () => {
                     // Method 1: Try with Markdown formatting
                     try {
+                        const mentionText = createMentionText('markdown');
+                        
+                        // FIXED: Add validation to ensure we have mentions to send
+                        if (!mentionText || mentionText.trim() === '') {
+                            console.log(`⚠️ No valid usernames to mention in group ${chatId}`);
+                            return { success: false, error: 'No valid usernames configured' };
+                        }
+                        
                         const escapedSenderName = escapeUsername(senderName);
                         let markdownMessage;
                         
@@ -1832,16 +1842,18 @@ export default async function handler(req, res) {
                         
                         // Method 2: Try with HTML formatting
                         try {
+                            const htmlMentionText = createMentionText('html');
+                            
+                            // FIXED: Add validation to ensure we have mentions to send
+                            if (!htmlMentionText || htmlMentionText.trim() === '') {
+                                console.log(`⚠️ No valid usernames to mention in group ${chatId}`);
+                                return { success: false, error: 'No valid usernames configured' };
+                            }
+                            
                             const htmlSenderName = senderName
                                 .replace(/&/g, '&amp;')
                                 .replace(/</g, '&lt;')
                                 .replace(/>/g, '&gt;');
-                            
-                            // Create HTML version of mentions
-                            const htmlMentionText = MENTION_CONFIG.CHOSEN_MEMBERS
-                                .filter(username => username && !username.startsWith('username'))
-                                .map(username => `@${username}`) // Don't escape in HTML mode
-                                .join(' ');
                             
                             let htmlMessage;
                             if (hasCustomMessage) {
@@ -1866,10 +1878,13 @@ export default async function handler(req, res) {
                             
                             // Method 3: Try with plain text (no formatting)
                             try {
-                                const plainMentionText = MENTION_CONFIG.CHOSEN_MEMBERS
-                                    .filter(username => username && !username.startsWith('username'))
-                                    .map(username => `@${username}`)
-                                    .join(' ');
+                                const plainMentionText = createMentionText('plain');
+                                
+                                // FIXED: Add validation to ensure we have mentions to send
+                                if (!plainMentionText || plainMentionText.trim() === '') {
+                                    console.log(`⚠️ No valid usernames to mention in group ${chatId}`);
+                                    return { success: false, error: 'No valid usernames configured' };
+                                }
                                 
                                 let plainMessage;
                                 if (hasCustomMessage) {

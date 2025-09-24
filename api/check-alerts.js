@@ -206,7 +206,8 @@ async function checkTimeReminders() {
             
             // Check if reminder message contains @all and if we're in the right chat
             if (reminder.message.toLowerCase().includes('@all') && isValidMentionContext(reminder.chatId)) {
-                const mentionText = createMentionText();
+                // Use HTML mode since reminders are sent with HTML parse mode
+                const mentionText = createMentionText('html');
                 if (mentionText && mentionText.trim() !== '') {
                     // Remove @all from the message and add actual mentions
                     processedMessage = reminder.message.replace(/@all/gi, '').trim();
