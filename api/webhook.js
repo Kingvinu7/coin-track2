@@ -303,7 +303,8 @@ const MENTION_CONFIG = {
         'Ananthu_VB',
         'Oxshahid13',
         'unknownking7',
-        'BeastIncarnate7'
+        'BeastIncarnate7',
+        'waazze'
     ]
 };
 
