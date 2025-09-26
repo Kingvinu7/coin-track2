@@ -251,9 +251,79 @@ function formatTimeDuration(seconds) {
     }
 }
 
-// --- NEW: Generate Quote Image using external API ---
-async function getQuoteImageUrl(message, repliedToMessage) {
+// --- Profile Photo Cache ---
+const profilePhotoCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// --- NEW: Get User Profile Photo URL ---
+async function getUserProfilePhotoUrl(botToken, userId) {
+    // Check cache first
+    const cacheKey = `${userId}`;
+    const cached = profilePhotoCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+        console.log(`📸 Using cached profile photo for user ${userId}`);
+        return cached.url;
+    }
     try {
+        // Get user profile photos
+        const response = await axios.get(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos`, {
+            params: {
+                user_id: userId,
+                limit: 1 // Get only the most recent profile photo
+            },
+            timeout: 10000
+        });
+
+        if (response.data.ok && response.data.result.total_count > 0) {
+            // Get the largest available size for better quality (last element in the array)
+            const photoSizes = response.data.result.photos[0];
+            const photo = photoSizes[photoSizes.length - 1]; // Get the largest size
+            const fileId = photo.file_id;
+
+            // Get file path
+            const fileResponse = await axios.get(`https://api.telegram.org/bot${botToken}/getFile`, {
+                params: { file_id: fileId },
+                timeout: 10000
+            });
+
+            if (fileResponse.data.ok) {
+                const filePath = fileResponse.data.result.file_path;
+                const photoUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+                
+                // Cache the result
+                profilePhotoCache.set(cacheKey, {
+                    url: photoUrl,
+                    timestamp: Date.now()
+                });
+                
+                console.log(`📸 Fetched and cached profile photo for user ${userId}`);
+                return photoUrl;
+            }
+        }
+        
+        // Cache null result to avoid repeated failed requests
+        profilePhotoCache.set(cacheKey, {
+            url: null,
+            timestamp: Date.now()
+        });
+        return null;
+    } catch (error) {
+        console.error('❌ Failed to get user profile photo:', error.message);
+        return null;
+    }
+}
+
+// --- NEW: Generate Quote Image using external API ---
+async function getQuoteImageUrl(message, repliedToMessage, botToken) {
+    try {
+        // Fetch profile photos for users
+        const mainUserPhotoUrl = await getUserProfilePhotoUrl(botToken, message.from.id);
+        let repliedUserPhotoUrl = null;
+        
+        if (repliedToMessage && repliedToMessage.from) {
+            repliedUserPhotoUrl = await getUserProfilePhotoUrl(botToken, repliedToMessage.from.id);
+        }
+
         const payload = {
             messages: [{
                 text: message.text,
@@ -264,6 +334,14 @@ async function getQuoteImageUrl(message, repliedToMessage) {
                 }
             }]
         };
+
+        // Add profile photo URL if available (try multiple common field names)
+        if (mainUserPhotoUrl) {
+            payload.messages[0].from.photo = mainUserPhotoUrl;
+            payload.messages[0].from.avatar = mainUserPhotoUrl;
+            payload.messages[0].from.avatar_url = mainUserPhotoUrl;
+        }
+
         // If the message is a reply, add the replied-to message as a quote in the payload
         if (repliedToMessage && repliedToMessage.text) {
             payload.messages[0].reply_message = {
@@ -274,14 +352,58 @@ async function getQuoteImageUrl(message, repliedToMessage) {
                     username: repliedToMessage.from.username
                 }
             };
+
+            // Add profile photo URL for replied user if available (try multiple common field names)
+            if (repliedUserPhotoUrl) {
+                payload.messages[0].reply_message.from.photo = repliedUserPhotoUrl;
+                payload.messages[0].reply_message.from.avatar = repliedUserPhotoUrl;
+                payload.messages[0].reply_message.from.avatar_url = repliedUserPhotoUrl;
+            }
         }
 
-        const response = await axios.post('https://bot.lyo.su/quote/generate.webp', payload, {
-            responseType: 'arraybuffer', // Request the response as a binary buffer
-            timeout: 15000
-        });
-        // The response.data is the image buffer
-        return response.data;
+        console.log('📸 Quote payload with profile photos:', JSON.stringify(payload, null, 2));
+
+        try {
+            const response = await axios.post('https://bot.lyo.su/quote/generate.webp', payload, {
+                responseType: 'arraybuffer', // Request the response as a binary buffer
+                timeout: 15000
+            });
+            // The response.data is the image buffer
+            return response.data;
+        } catch (apiError) {
+            // If the API fails with profile photos, try without them as fallback
+            console.warn('⚠️ Quote API failed with profile photos, trying without photos...');
+            
+            const fallbackPayload = {
+                messages: [{
+                    text: message.text,
+                    from: {
+                        id: message.from.id,
+                        name: message.from.first_name,
+                        username: message.from.username
+                    }
+                }]
+            };
+
+            if (repliedToMessage && repliedToMessage.text) {
+                fallbackPayload.messages[0].reply_message = {
+                    text: repliedToMessage.text,
+                    from: {
+                        id: repliedToMessage.from.id,
+                        name: repliedToMessage.from.first_name,
+                        username: repliedToMessage.from.username
+                    }
+                };
+            }
+
+            const fallbackResponse = await axios.post('https://bot.lyo.su/quote/generate.webp', fallbackPayload, {
+                responseType: 'arraybuffer',
+                timeout: 15000
+            });
+            
+            console.log('✅ Quote generated successfully without profile photos');
+            return fallbackResponse.data;
+        }
     } catch (error) {
         console.error('❌ Failed to generate quote image:', error.response?.data?.toString() || error.message);
         return null;
@@ -2043,7 +2165,7 @@ export default async function handler(req, res) {
                 const repliedToMessage = msg.reply_to_message;
                 if (repliedToMessage) {
                     const messageToQuote = repliedToMessage;
-                    const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null);
+                    const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null, BOT_TOKEN);
                     if (quoteImageBuffer) {
                         await sendStickerToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageBuffer);
                     } else {
