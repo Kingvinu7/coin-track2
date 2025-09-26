@@ -414,11 +414,13 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
         } else {
             // Use a fallback avatar based on user's first name initial
             const initial = (message.from.first_name || 'U').charAt(0).toUpperCase();
-            const fallbackAvatar = `https://ui-avatars.com/api/?name=${initial}&size=150&background=0066cc&color=ffffff&bold=true`;
+            // Use larger size and more prominent styling for better visibility
+            const fallbackAvatar = `https://ui-avatars.com/api/?name=${initial}&size=200&background=0066cc&color=ffffff&bold=true&font-size=0.6&rounded=true`;
             payload.messages[0].from.photo = fallbackAvatar;
             payload.messages[0].from.avatar = fallbackAvatar;
             payload.messages[0].from.avatar_url = fallbackAvatar;
-            console.log(`🎭 Using fallback avatar for main user: ${fallbackAvatar}`);
+            payload.messages[0].from.profile_pic = fallbackAvatar; // Additional field for better compatibility
+            console.log(`🎭 Using enhanced fallback avatar for main user: ${fallbackAvatar}`);
         }
 
         // If the message is a reply, add the replied-to message as a quote in the payload
@@ -441,11 +443,13 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             } else {
                 // Use a fallback avatar for replied user
                 const replyInitial = (repliedToMessage.from.first_name || 'U').charAt(0).toUpperCase();
-                const replyFallbackAvatar = `https://ui-avatars.com/api/?name=${replyInitial}&size=150&background=cc6600&color=ffffff&bold=true`;
+                // Use larger size and different color for replied user
+                const replyFallbackAvatar = `https://ui-avatars.com/api/?name=${replyInitial}&size=200&background=cc6600&color=ffffff&bold=true&font-size=0.6&rounded=true`;
                 payload.messages[0].reply_message.from.photo = replyFallbackAvatar;
                 payload.messages[0].reply_message.from.avatar = replyFallbackAvatar;
                 payload.messages[0].reply_message.from.avatar_url = replyFallbackAvatar;
-                console.log(`🎭 Using fallback avatar for replied user: ${replyFallbackAvatar}`);
+                payload.messages[0].reply_message.from.profile_pic = replyFallbackAvatar; // Additional field
+                console.log(`🎭 Using enhanced fallback avatar for replied user: ${replyFallbackAvatar}`);
             }
         }
 
@@ -506,9 +510,11 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                             };
                             
                             // Add photo if available - try different field names for better compatibility
-                            const photoUrl = msg.from.photo || msg.from.avatar || msg.from.avatar_url;
+                            const photoUrl = msg.from.photo || msg.from.avatar || msg.from.avatar_url || msg.from.profile_pic;
                             if (photoUrl) {
                                 formattedMsg.from.photo = photoUrl;
+                                formattedMsg.from.avatar = photoUrl; // Add multiple fields for better compatibility
+                                formattedMsg.from.profile_pic = photoUrl;
                                 console.log(`📸 Added photo to quotly payload: ${photoUrl}`);
                             }
                             
@@ -524,9 +530,11 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                                 };
                                 
                                 // Add photo for replied message if available
-                                const replyPhotoUrl = msg.reply_message.from.photo || msg.reply_message.from.avatar || msg.reply_message.from.avatar_url;
+                                const replyPhotoUrl = msg.reply_message.from.photo || msg.reply_message.from.avatar || msg.reply_message.from.avatar_url || msg.reply_message.from.profile_pic;
                                 if (replyPhotoUrl) {
                                     formattedMsg.reply_message.from.photo = replyPhotoUrl;
+                                    formattedMsg.reply_message.from.avatar = replyPhotoUrl;
+                                    formattedMsg.reply_message.from.profile_pic = replyPhotoUrl;
                                     console.log(`📸 Added reply photo to quotly payload: ${replyPhotoUrl}`);
                                 }
                             }
@@ -588,6 +596,14 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                 }
                 
                 console.log(`✅ Quote generated successfully using ${apiUrl} (${imageBuffer.length} bytes)`);
+                
+                // Log final success with avatar info
+                const hasAvatarInPayload = !!(apiPayload.messages[0].from.photo || apiPayload.messages[0].from.avatar);
+                console.log(`🎭 Avatar included in final quote: ${hasAvatarInPayload ? 'YES' : 'NO'}`);
+                if (hasAvatarInPayload) {
+                    console.log(`📸 Avatar URL used: ${apiPayload.messages[0].from.photo || apiPayload.messages[0].from.avatar}`);
+                }
+                
                 return imageBuffer;
                 
             } catch (apiError) {
