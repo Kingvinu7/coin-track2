@@ -2538,13 +2538,33 @@ export default async function handler(req, res) {
                     hasText: !!(repliedToMessage?.text),
                     hasCaption: !!(repliedToMessage?.caption),
                     textPreview: repliedToMessage?.text?.substring(0, 50) || 'none',
-                    captionPreview: repliedToMessage?.caption?.substring(0, 50) || 'none'
+                    captionPreview: repliedToMessage?.caption?.substring(0, 50) || 'none',
+                    textLength: repliedToMessage?.text?.length || 0,
+                    textRaw: JSON.stringify(repliedToMessage?.text),
+                    captionRaw: JSON.stringify(repliedToMessage?.caption)
                 });
                 
                 if (repliedToMessage) {
                     // Ensure the replied message has proper text content or is a media message
                     let messageText = repliedToMessage.text || repliedToMessage.caption || '';
                     const isMediaMessage = !!(repliedToMessage.photo || repliedToMessage.video || repliedToMessage.document || repliedToMessage.sticker || repliedToMessage.animation);
+                    
+                    console.log('🔍 Message text analysis:', {
+                        originalText: JSON.stringify(repliedToMessage.text),
+                        originalCaption: JSON.stringify(repliedToMessage.caption),
+                        combinedText: JSON.stringify(messageText),
+                        textTrimmed: JSON.stringify(messageText.trim()),
+                        textLength: messageText.length,
+                        trimmedLength: messageText.trim().length,
+                        isMediaMessage: isMediaMessage,
+                        mediaTypes: {
+                            photo: !!repliedToMessage.photo,
+                            video: !!repliedToMessage.video,
+                            document: !!repliedToMessage.document,
+                            sticker: !!repliedToMessage.sticker,
+                            animation: !!repliedToMessage.animation
+                        }
+                    });
                     
                     // If no text/caption but it's a media message, use a placeholder
                     if ((!messageText || messageText.trim() === '') && isMediaMessage) {
@@ -2565,10 +2585,20 @@ export default async function handler(req, res) {
                             hasMedia: isMediaMessage,
                             textLength: repliedToMessage.text?.length || 0,
                             captionLength: repliedToMessage.caption?.length || 0,
-                            messageType: repliedToMessage.photo ? 'photo' : repliedToMessage.video ? 'video' : repliedToMessage.document ? 'document' : repliedToMessage.sticker ? 'sticker' : 'text'
+                            messageType: repliedToMessage.photo ? 'photo' : repliedToMessage.video ? 'video' : repliedToMessage.document ? 'document' : repliedToMessage.sticker ? 'sticker' : 'text',
+                            messageTextRaw: JSON.stringify(messageText),
+                            messageTextBytes: messageText ? Array.from(messageText).map(c => c.charCodeAt(0)) : [],
+                            allMessageKeys: Object.keys(repliedToMessage)
                         });
-                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Cannot create quote from empty message. Please reply to a message with text, caption, or media.`');
-                        return;
+                        
+                        // Try one more fallback - use a generic placeholder if we have any message at all
+                        if (repliedToMessage) {
+                            console.log('🔄 Using generic placeholder for non-empty message object');
+                            messageText = '[Message]';
+                        } else {
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Cannot create quote from empty message. Please reply to a message with text, caption, or media.`');
+                            return;
+                        }
                     }
                     
                     console.log('📝 Creating quote for message:', {
