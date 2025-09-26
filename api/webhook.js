@@ -2297,15 +2297,9 @@ export default async function handler(req, res) {
         // FIXED: Move command detection before @all processing to prevent conflicts
         const isCommand = text.startsWith('/') || text.startsWith('.');
         
-        // Debug logging for command detection
+        // Basic command detection logging
         if (text.startsWith('/')) {
-            console.log('🔍 Command detected:', {
-                text: text,
-                isCommand: isCommand,
-                startsWithSlash: text.startsWith('/'),
-                firstChar: text.charAt(0),
-                textLength: text.length
-            });
+            console.log('🔍 Command detected:', text);
         }
 
         // ENHANCED: Check for @all mention command anywhere in the message
@@ -2455,14 +2449,10 @@ export default async function handler(req, res) {
         
         const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
-        console.log('🔍 Message classification:', {
-            isCommand: isCommand,
-            isCalculation: isCalculation,
-            isCoinCheck: isCoinCheck,
-            isAddress: isAddress,
-            chatType: chatType,
-            willIgnore: !isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group'
-        });
+        // Only log classification for commands
+        if (isCommand) {
+            console.log('🔍 Command classification passed');
+        }
         
         if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
             console.log('⚠️ Ignoring message - not a command/calculation/coin/address in group');
@@ -2518,13 +2508,10 @@ export default async function handler(req, res) {
             const command = parts[0].split('@')[0];
             const symbol = parts[1];
             
-            console.log('🔧 Processing command:', {
-                originalText: text,
-                parts: parts,
-                command: command,
-                symbol: symbol,
-                isQuoteCommand: command === 'quote' || command === 's'
-            });
+            // Log quote commands specifically
+            if (command === 'quote' || command === 's') {
+                console.log('🔧 Processing quote command:', command);
+            }
 
             if (command === 'leaderboard') {
                 const reply = await buildLeaderboardReply(chatId);
@@ -2532,16 +2519,11 @@ export default async function handler(req, res) {
             }
             else if (command === 'quote' || command === 's') {
                 const repliedToMessage = msg.reply_to_message;
-                console.log('🔍 Quote command received, reply message structure:', {
+                console.log('🔍 Quote command received:', {
                     hasReplyMessage: !!repliedToMessage,
-                    replyMessageKeys: repliedToMessage ? Object.keys(repliedToMessage) : [],
                     hasText: !!(repliedToMessage?.text),
                     hasCaption: !!(repliedToMessage?.caption),
-                    textPreview: repliedToMessage?.text?.substring(0, 50) || 'none',
-                    captionPreview: repliedToMessage?.caption?.substring(0, 50) || 'none',
-                    textLength: repliedToMessage?.text?.length || 0,
-                    textRaw: JSON.stringify(repliedToMessage?.text),
-                    captionRaw: JSON.stringify(repliedToMessage?.caption)
+                    textPreview: repliedToMessage?.text?.substring(0, 30) || 'none'
                 });
                 
                 if (repliedToMessage) {
@@ -2549,22 +2531,15 @@ export default async function handler(req, res) {
                     let messageText = repliedToMessage.text || repliedToMessage.caption || '';
                     const isMediaMessage = !!(repliedToMessage.photo || repliedToMessage.video || repliedToMessage.document || repliedToMessage.sticker || repliedToMessage.animation);
                     
-                    console.log('🔍 Message text analysis:', {
-                        originalText: JSON.stringify(repliedToMessage.text),
-                        originalCaption: JSON.stringify(repliedToMessage.caption),
-                        combinedText: JSON.stringify(messageText),
-                        textTrimmed: JSON.stringify(messageText.trim()),
-                        textLength: messageText.length,
-                        trimmedLength: messageText.trim().length,
-                        isMediaMessage: isMediaMessage,
-                        mediaTypes: {
-                            photo: !!repliedToMessage.photo,
-                            video: !!repliedToMessage.video,
-                            document: !!repliedToMessage.document,
-                            sticker: !!repliedToMessage.sticker,
-                            animation: !!repliedToMessage.animation
-                        }
-                    });
+                    // Basic validation logging
+                    if (!messageText || messageText.trim() === '') {
+                        console.log('🔍 Empty message detected, checking for media:', {
+                            isMediaMessage: isMediaMessage,
+                            hasPhoto: !!repliedToMessage.photo,
+                            hasVideo: !!repliedToMessage.video,
+                            hasDocument: !!repliedToMessage.document
+                        });
+                    }
                     
                     // If no text/caption but it's a media message, use a placeholder
                     if ((!messageText || messageText.trim() === '') && isMediaMessage) {
@@ -2579,16 +2554,10 @@ export default async function handler(req, res) {
                     
                     // Only reject if it's truly empty (no text, caption, or media)
                     if (!messageText || messageText.trim() === '') {
-                        console.log('⚠️ Message validation failed - truly empty message:', {
+                        console.log('⚠️ Message validation failed - using fallback:', {
                             hasText: !!repliedToMessage.text,
                             hasCaption: !!repliedToMessage.caption,
-                            hasMedia: isMediaMessage,
-                            textLength: repliedToMessage.text?.length || 0,
-                            captionLength: repliedToMessage.caption?.length || 0,
-                            messageType: repliedToMessage.photo ? 'photo' : repliedToMessage.video ? 'video' : repliedToMessage.document ? 'document' : repliedToMessage.sticker ? 'sticker' : 'text',
-                            messageTextRaw: JSON.stringify(messageText),
-                            messageTextBytes: messageText ? Array.from(messageText).map(c => c.charCodeAt(0)) : [],
-                            allMessageKeys: Object.keys(repliedToMessage)
+                            hasMedia: isMediaMessage
                         });
                         
                         // Try one more fallback - use a generic placeholder if we have any message at all
