@@ -2172,12 +2172,10 @@ export default async function handler(req, res) {
         }
 
         const msg = update.message;
-        console.log('📨 Processing message update:', {
-            hasMessage: !!msg,
-            hasText: !!msg?.text,
-            text: msg?.text,
-            messageType: msg?.photo ? 'photo' : msg?.video ? 'video' : msg?.document ? 'document' : msg?.text ? 'text' : 'unknown'
-        });
+        // Basic message processing logging
+        if (msg?.text?.startsWith('/')) {
+            console.log('📨 Processing command message:', msg.text);
+        }
         
         if (!msg || !msg.text) {
             console.log('⚠️ Skipping message - no text content');
@@ -2194,14 +2192,14 @@ export default async function handler(req, res) {
         const user = msg.from;
         const chatType = msg.chat.type;
         
-        console.log('📝 Message details:', {
-            chatId: chatId,
-            messageId: messageId,
-            text: text,
-            user: user.first_name,
-            chatType: chatType,
-            hasReplyToMessage: !!msg.reply_to_message
-        });
+        // Log details for commands only
+        if (text.startsWith('/')) {
+            console.log('📝 Command details:', {
+                text: text,
+                user: user.first_name,
+                hasReplyToMessage: !!msg.reply_to_message
+            });
+        }
 
         // Social Media Link Preview
         const linkData = getSingleBestAlternative(text);
@@ -2544,17 +2542,32 @@ export default async function handler(req, res) {
                 });
                 
                 if (repliedToMessage) {
-                    // Ensure the replied message has proper text content
-                    const messageText = repliedToMessage.text || repliedToMessage.caption || '';
+                    // Ensure the replied message has proper text content or is a media message
+                    let messageText = repliedToMessage.text || repliedToMessage.caption || '';
+                    const isMediaMessage = !!(repliedToMessage.photo || repliedToMessage.video || repliedToMessage.document || repliedToMessage.sticker || repliedToMessage.animation);
+                    
+                    // If no text/caption but it's a media message, use a placeholder
+                    if ((!messageText || messageText.trim() === '') && isMediaMessage) {
+                        const mediaType = repliedToMessage.photo ? 'Photo' : 
+                                        repliedToMessage.video ? 'Video' : 
+                                        repliedToMessage.document ? 'Document' : 
+                                        repliedToMessage.sticker ? 'Sticker' : 
+                                        repliedToMessage.animation ? 'GIF' : 'Media';
+                        messageText = `[${mediaType}]`;
+                        console.log(`📸 Using placeholder text for ${mediaType.toLowerCase()}: "${messageText}"`);
+                    }
+                    
+                    // Only reject if it's truly empty (no text, caption, or media)
                     if (!messageText || messageText.trim() === '') {
-                        console.log('⚠️ Message validation failed:', {
+                        console.log('⚠️ Message validation failed - truly empty message:', {
                             hasText: !!repliedToMessage.text,
                             hasCaption: !!repliedToMessage.caption,
+                            hasMedia: isMediaMessage,
                             textLength: repliedToMessage.text?.length || 0,
                             captionLength: repliedToMessage.caption?.length || 0,
-                            messageType: repliedToMessage.photo ? 'photo' : repliedToMessage.video ? 'video' : repliedToMessage.document ? 'document' : 'text'
+                            messageType: repliedToMessage.photo ? 'photo' : repliedToMessage.video ? 'video' : repliedToMessage.document ? 'document' : repliedToMessage.sticker ? 'sticker' : 'text'
                         });
-                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Cannot create quote from empty message or media-only message.`');
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Cannot create quote from empty message. Please reply to a message with text, caption, or media.`');
                         return;
                     }
                     
@@ -2562,14 +2575,15 @@ export default async function handler(req, res) {
                         text: messageText,
                         originalText: repliedToMessage.text,
                         caption: repliedToMessage.caption,
+                        isMediaMessage: isMediaMessage,
                         from: repliedToMessage.from,
                         messageId: repliedToMessage.message_id
                     });
                     
-                    // Create a modified message object with the combined text
+                    // Create a modified message object with the processed text
                     const messageToQuote = {
                         ...repliedToMessage,
-                        text: messageText // Use combined text (text or caption)
+                        text: messageText // Use processed text (text, caption, or placeholder)
                     };
                     const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null, BOT_TOKEN);
                     
