@@ -484,8 +484,8 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
 
         // Try multiple quote generation APIs for better profile photo support
         const apiEndpoints = [
-            'https://quotly.vercel.app/generate',
-            'https://bot.lyo.su/quote/generate.webp'
+            'https://bot.lyo.su/quote/generate.webp',
+            'https://quotly.vercel.app/generate'
         ];
 
         for (let i = 0; i < apiEndpoints.length; i++) {
@@ -493,8 +493,9 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             console.log(`🔄 Trying quote API ${i + 1}/${apiEndpoints.length}: ${apiUrl}`);
             
             try {
-                // For quotly API, we need to format the payload differently
+                // Format payload based on API type
                 let apiPayload = payload;
+                
                 if (apiUrl.includes('quotly.vercel.app')) {
                     // Quotly vercel works better with simpler format - use the basic payload but ensure photo field is properly set
                     apiPayload = {
@@ -542,6 +543,9 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                             return formattedMsg;
                         })
                     };
+                } else if (apiUrl.includes('bot.lyo.su')) {
+                    // Lyo API uses the full payload format with all fields
+                    console.log(`📸 Using full payload for lyo API with ${payload.messages[0].from.photo ? 'avatar' : 'no avatar'}`);
                 }
 
                 // Different APIs return different response formats
@@ -552,11 +556,13 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                     }
                 };
                 
-                // For quotly API, we need to get JSON response first, then extract base64 image
+                // Set response type based on API
                 if (apiUrl.includes('quotly.vercel.app')) {
                     axiosConfig.responseType = 'json';
-                } else {
+                } else if (apiUrl.includes('bot.lyo.su')) {
                     axiosConfig.responseType = 'arraybuffer';
+                } else {
+                    axiosConfig.responseType = 'arraybuffer'; // default
                 }
                 
                 const response = await axios.post(apiUrl, apiPayload, axiosConfig);
@@ -577,8 +583,13 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                     imageBuffer = Buffer.from(base64Image, 'base64');
                     console.log(`✅ Converted base64 to buffer: ${imageBuffer.length} bytes`);
                     
+                } else if (apiUrl.includes('bot.lyo.su')) {
+                    // Handle lyo direct binary response
+                    imageBuffer = Buffer.from(response.data);
+                    console.log(`✅ Lyo API returned direct binary response: ${imageBuffer.length} bytes`);
+                    
                 } else {
-                    // Handle direct binary response (like bot.lyo.su)
+                    // Handle other direct binary responses
                     imageBuffer = Buffer.from(response.data);
                     console.log(`✅ Got direct binary response: ${imageBuffer.length} bytes`);
                 }
@@ -650,8 +661,10 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                             
                             if (fallbackApiUrl.includes('quotly.vercel.app')) {
                                 fallbackAxiosConfig.responseType = 'json';
-                            } else {
+                            } else if (fallbackApiUrl.includes('bot.lyo.su')) {
                                 fallbackAxiosConfig.responseType = 'arraybuffer';
+                            } else {
+                                fallbackAxiosConfig.responseType = 'arraybuffer'; // default
                             }
                             
                             const fallbackResponse = await axios.post(fallbackApiUrl, fallbackPayload, fallbackAxiosConfig);
@@ -669,8 +682,13 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                                 fallbackImageBuffer = Buffer.from(base64Image, 'base64');
                                 console.log(`✅ Fallback: Converted base64 to buffer: ${fallbackImageBuffer.length} bytes`);
                                 
+                            } else if (fallbackApiUrl.includes('bot.lyo.su')) {
+                                // Handle lyo direct binary response
+                                fallbackImageBuffer = Buffer.from(fallbackResponse.data);
+                                console.log(`✅ Fallback: Lyo API returned direct binary response: ${fallbackImageBuffer.length} bytes`);
+                                
                             } else {
-                                // Handle direct binary response
+                                // Handle other direct binary responses
                                 fallbackImageBuffer = Buffer.from(fallbackResponse.data);
                                 console.log(`✅ Fallback: Got direct binary response: ${fallbackImageBuffer.length} bytes`);
                             }
