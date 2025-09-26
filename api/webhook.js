@@ -2172,7 +2172,15 @@ export default async function handler(req, res) {
         }
 
         const msg = update.message;
+        console.log('📨 Processing message update:', {
+            hasMessage: !!msg,
+            hasText: !!msg?.text,
+            text: msg?.text,
+            messageType: msg?.photo ? 'photo' : msg?.video ? 'video' : msg?.document ? 'document' : msg?.text ? 'text' : 'unknown'
+        });
+        
         if (!msg || !msg.text) {
+            console.log('⚠️ Skipping message - no text content');
             return res.status(200).json({
                 ok: true,
                 message: 'No text in message'
@@ -2185,6 +2193,15 @@ export default async function handler(req, res) {
         const text = msg.text.trim();
         const user = msg.from;
         const chatType = msg.chat.type;
+        
+        console.log('📝 Message details:', {
+            chatId: chatId,
+            messageId: messageId,
+            text: text,
+            user: user.first_name,
+            chatType: chatType,
+            hasReplyToMessage: !!msg.reply_to_message
+        });
 
         // Social Media Link Preview
         const linkData = getSingleBestAlternative(text);
@@ -2281,6 +2298,17 @@ export default async function handler(req, res) {
 
         // FIXED: Move command detection before @all processing to prevent conflicts
         const isCommand = text.startsWith('/') || text.startsWith('.');
+        
+        // Debug logging for command detection
+        if (text.startsWith('/')) {
+            console.log('🔍 Command detected:', {
+                text: text,
+                isCommand: isCommand,
+                startsWithSlash: text.startsWith('/'),
+                firstChar: text.charAt(0),
+                textLength: text.length
+            });
+        }
 
         // ENHANCED: Check for @all mention command anywhere in the message
         // BUT ONLY if it's not part of a command (like /remind)
@@ -2429,7 +2457,17 @@ export default async function handler(req, res) {
         
         const isAddress = (text.length === 42 || text.length === 32 || text.length === 44) && /^(0x)?[a-zA-Z0-9]+$/.test(text);
 
+        console.log('🔍 Message classification:', {
+            isCommand: isCommand,
+            isCalculation: isCalculation,
+            isCoinCheck: isCoinCheck,
+            isAddress: isAddress,
+            chatType: chatType,
+            willIgnore: !isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group'
+        });
+        
         if (!isCommand && !isCalculation && !isCoinCheck && !isAddress && chatType === 'group') {
+            console.log('⚠️ Ignoring message - not a command/calculation/coin/address in group');
             return res.status(200).json({
                 ok: true,
                 message: 'Ignoring non-command/calculation/coin message'
@@ -2481,6 +2519,14 @@ export default async function handler(req, res) {
             const parts = text.substring(1).toLowerCase().split(' ');
             const command = parts[0].split('@')[0];
             const symbol = parts[1];
+            
+            console.log('🔧 Processing command:', {
+                originalText: text,
+                parts: parts,
+                command: command,
+                symbol: symbol,
+                isQuoteCommand: command === 'quote' || command === 's'
+            });
 
             if (command === 'leaderboard') {
                 const reply = await buildLeaderboardReply(chatId);
