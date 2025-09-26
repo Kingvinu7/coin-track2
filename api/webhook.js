@@ -364,14 +364,26 @@ async function getUserProfilePhotoUrl(botToken, userId) {
 async function getQuoteImageUrl(message, repliedToMessage, botToken) {
     try {
         // Validate input message
-        if (!message || !message.text || !message.from) {
+        if (!message || !message.from) {
             console.error('❌ Invalid message data provided to getQuoteImageUrl:', message);
             return null;
         }
         
-        if (message.text.trim() === '') {
-            console.error('❌ Empty message text provided to getQuoteImageUrl');
-            return null;
+        // Ensure we have some text to work with
+        const messageText = message.text || message.caption || '[Media Message]';
+        if (!messageText || messageText.trim() === '') {
+            console.warn('⚠️ No usable text found in message:', {
+                hasText: !!message.text,
+                hasCaption: !!message.caption,
+                textLength: message.text?.length || 0,
+                captionLength: message.caption?.length || 0,
+                messageKeys: Object.keys(message)
+            });
+            // Use a placeholder text for media-only messages
+            message.text = '[Media Message]';
+        } else if (messageText !== message.text) {
+            // Update message text to use caption if text was empty
+            message.text = messageText;
         }
         
         console.log('🔍 Processing quote request for message:', {
@@ -2476,20 +2488,43 @@ export default async function handler(req, res) {
             }
             else if (command === 'quote' || command === 's') {
                 const repliedToMessage = msg.reply_to_message;
+                console.log('🔍 Quote command received, reply message structure:', {
+                    hasReplyMessage: !!repliedToMessage,
+                    replyMessageKeys: repliedToMessage ? Object.keys(repliedToMessage) : [],
+                    hasText: !!(repliedToMessage?.text),
+                    hasCaption: !!(repliedToMessage?.caption),
+                    textPreview: repliedToMessage?.text?.substring(0, 50) || 'none',
+                    captionPreview: repliedToMessage?.caption?.substring(0, 50) || 'none'
+                });
+                
                 if (repliedToMessage) {
                     // Ensure the replied message has proper text content
-                    if (!repliedToMessage.text || repliedToMessage.text.trim() === '') {
+                    const messageText = repliedToMessage.text || repliedToMessage.caption || '';
+                    if (!messageText || messageText.trim() === '') {
+                        console.log('⚠️ Message validation failed:', {
+                            hasText: !!repliedToMessage.text,
+                            hasCaption: !!repliedToMessage.caption,
+                            textLength: repliedToMessage.text?.length || 0,
+                            captionLength: repliedToMessage.caption?.length || 0,
+                            messageType: repliedToMessage.photo ? 'photo' : repliedToMessage.video ? 'video' : repliedToMessage.document ? 'document' : 'text'
+                        });
                         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Cannot create quote from empty message or media-only message.`');
                         return;
                     }
                     
                     console.log('📝 Creating quote for message:', {
-                        text: repliedToMessage.text,
+                        text: messageText,
+                        originalText: repliedToMessage.text,
+                        caption: repliedToMessage.caption,
                         from: repliedToMessage.from,
                         messageId: repliedToMessage.message_id
                     });
                     
-                    const messageToQuote = repliedToMessage;
+                    // Create a modified message object with the combined text
+                    const messageToQuote = {
+                        ...repliedToMessage,
+                        text: messageText // Use combined text (text or caption)
+                    };
                     const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null, BOT_TOKEN);
                     
                     if (quoteImageBuffer && quoteImageBuffer.length > 0) {
