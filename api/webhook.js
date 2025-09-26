@@ -473,21 +473,59 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                     };
                 }
 
-                const response = await axios.post(apiUrl, apiPayload, {
-                    responseType: 'arraybuffer',
+                // Different APIs return different response formats
+                let axiosConfig = {
                     timeout: 15000,
                     headers: {
                         'Content-Type': 'application/json'
                     }
-                });
+                };
                 
-                if (!response.data || response.data.length === 0) {
-                    console.error(`❌ API ${apiUrl} returned empty response`);
-                    throw new Error('Empty response from quote API');
+                // For quotly API, we need to get JSON response first, then extract base64 image
+                if (apiUrl.includes('quotly.vercel.app')) {
+                    axiosConfig.responseType = 'json';
+                } else {
+                    axiosConfig.responseType = 'arraybuffer';
                 }
                 
-                console.log(`✅ Quote generated successfully using ${apiUrl} (${response.data.length} bytes)`);
-                return response.data;
+                const response = await axios.post(apiUrl, apiPayload, axiosConfig);
+                
+                let imageBuffer;
+                
+                if (apiUrl.includes('quotly.vercel.app')) {
+                    // Handle quotly JSON response with base64 image
+                    if (!response.data || !response.data.status || !response.data.data || !response.data.data.image) {
+                        console.error(`❌ Quotly API returned invalid response structure:`, response.data);
+                        throw new Error('Invalid response structure from quotly API');
+                    }
+                    
+                    const base64Image = response.data.data.image;
+                    console.log(`🔍 Quotly returned base64 image with length: ${base64Image.length}`);
+                    
+                    // Convert base64 to buffer
+                    imageBuffer = Buffer.from(base64Image, 'base64');
+                    console.log(`✅ Converted base64 to buffer: ${imageBuffer.length} bytes`);
+                    
+                } else {
+                    // Handle direct binary response (like bot.lyo.su)
+                    imageBuffer = Buffer.from(response.data);
+                    console.log(`✅ Got direct binary response: ${imageBuffer.length} bytes`);
+                }
+                
+                if (!imageBuffer || imageBuffer.length === 0) {
+                    console.error(`❌ API ${apiUrl} returned empty image buffer`);
+                    throw new Error('Empty image buffer from quote API');
+                }
+                
+                // Validate that we have a proper image
+                const isValidImage = imageBuffer.length > 100; // Basic size check
+                if (!isValidImage) {
+                    console.error(`❌ API ${apiUrl} returned suspiciously small image: ${imageBuffer.length} bytes`);
+                    throw new Error('Suspiciously small image from quote API');
+                }
+                
+                console.log(`✅ Quote generated successfully using ${apiUrl} (${imageBuffer.length} bytes)`);
+                return imageBuffer;
                 
             } catch (apiError) {
                 console.warn(`⚠️ Quote API ${apiUrl} failed:`, apiError.response?.data?.toString() || apiError.message);
@@ -522,21 +560,49 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                     for (const fallbackApiUrl of apiEndpoints) {
                         try {
                             console.log(`🔄 Trying fallback without photos: ${fallbackApiUrl}`);
-                            const fallbackResponse = await axios.post(fallbackApiUrl, fallbackPayload, {
-                                responseType: 'arraybuffer',
+                            
+                            // Use same response type logic as above
+                            let fallbackAxiosConfig = {
                                 timeout: 15000,
                                 headers: {
                                     'Content-Type': 'application/json'
                                 }
-                            });
+                            };
                             
-                            if (!fallbackResponse.data || fallbackResponse.data.length === 0) {
-                                console.error(`❌ Fallback API ${fallbackApiUrl} returned empty response`);
-                                throw new Error('Empty response from fallback quote API');
+                            if (fallbackApiUrl.includes('quotly.vercel.app')) {
+                                fallbackAxiosConfig.responseType = 'json';
+                            } else {
+                                fallbackAxiosConfig.responseType = 'arraybuffer';
                             }
                             
-                            console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl} (${fallbackResponse.data.length} bytes)`);
-                            return fallbackResponse.data;
+                            const fallbackResponse = await axios.post(fallbackApiUrl, fallbackPayload, fallbackAxiosConfig);
+                            
+                            let fallbackImageBuffer;
+                            
+                            if (fallbackApiUrl.includes('quotly.vercel.app')) {
+                                // Handle quotly JSON response with base64 image
+                                if (!fallbackResponse.data || !fallbackResponse.data.status || !fallbackResponse.data.data || !fallbackResponse.data.data.image) {
+                                    console.error(`❌ Quotly fallback API returned invalid response structure:`, fallbackResponse.data);
+                                    throw new Error('Invalid response structure from quotly fallback API');
+                                }
+                                
+                                const base64Image = fallbackResponse.data.data.image;
+                                fallbackImageBuffer = Buffer.from(base64Image, 'base64');
+                                console.log(`✅ Fallback: Converted base64 to buffer: ${fallbackImageBuffer.length} bytes`);
+                                
+                            } else {
+                                // Handle direct binary response
+                                fallbackImageBuffer = Buffer.from(fallbackResponse.data);
+                                console.log(`✅ Fallback: Got direct binary response: ${fallbackImageBuffer.length} bytes`);
+                            }
+                            
+                            if (!fallbackImageBuffer || fallbackImageBuffer.length === 0) {
+                                console.error(`❌ Fallback API ${fallbackApiUrl} returned empty image buffer`);
+                                throw new Error('Empty image buffer from fallback quote API');
+                            }
+                            
+                            console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl} (${fallbackImageBuffer.length} bytes)`);
+                            return fallbackImageBuffer;
                         } catch (fallbackError) {
                             console.warn(`⚠️ Fallback API ${fallbackApiUrl} also failed:`, fallbackError.message);
                         }
