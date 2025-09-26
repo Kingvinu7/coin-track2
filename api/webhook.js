@@ -376,19 +376,33 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
         // Additional debugging for profile photo URLs
         if (payload.messages[0].from.photo) {
             console.log(`🔍 Main user profile photo URL: ${payload.messages[0].from.photo}`);
+            // Test if the photo URL is accessible
+            try {
+                const photoResponse = await axios.head(payload.messages[0].from.photo, { timeout: 5000 });
+                console.log(`✅ Main user photo URL is accessible (${photoResponse.status})`);
+            } catch (photoError) {
+                console.warn(`⚠️ Main user photo URL may not be accessible:`, photoError.message);
+            }
         } else {
             console.log('⚠️ No profile photo URL found for main user');
         }
         
         if (payload.messages[0].reply_message && payload.messages[0].reply_message.from.photo) {
             console.log(`🔍 Replied user profile photo URL: ${payload.messages[0].reply_message.from.photo}`);
+            // Test if the photo URL is accessible
+            try {
+                const replyPhotoResponse = await axios.head(payload.messages[0].reply_message.from.photo, { timeout: 5000 });
+                console.log(`✅ Replied user photo URL is accessible (${replyPhotoResponse.status})`);
+            } catch (replyPhotoError) {
+                console.warn(`⚠️ Replied user photo URL may not be accessible:`, replyPhotoError.message);
+            }
         } else if (payload.messages[0].reply_message) {
             console.log('⚠️ No profile photo URL found for replied user');
         }
 
         // Try multiple quote generation APIs for better profile photo support
         const apiEndpoints = [
-            'https://quotly.netorare.codes/generate',
+            'https://quotly.vercel.app/generate',
             'https://bot.lyo.su/quote/generate.webp'
         ];
 
@@ -399,33 +413,46 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             try {
                 // For quotly API, we need to format the payload differently
                 let apiPayload = payload;
-                if (apiUrl.includes('quotly.netorare.codes')) {
-                    // Quotly expects a different format - let's try with entity formatting
+                if (apiUrl.includes('quotly.vercel.app')) {
+                    // Quotly vercel works better with simpler format - use the basic payload but ensure photo field is properly set
                     apiPayload = {
-                        type: "quote",
-                        format: "webp",
-                        backgroundColor: "#1b1429",
-                        width: 512,
-                        height: 768,
-                        scale: 2,
-                        messages: payload.messages.map(msg => ({
-                            entities: [],
-                            avatar: true,
-                            from: {
-                                id: msg.from.id,
-                                name: msg.from.name,
-                                username: msg.from.username,
-                                photo: {
-                                    url: msg.from.photo || msg.from.avatar || msg.from.avatar_url
+                        ...payload,
+                        messages: payload.messages.map(msg => {
+                            const formattedMsg = {
+                                text: msg.text,
+                                from: {
+                                    id: msg.from.id,
+                                    name: msg.from.name,
+                                    username: msg.from.username
                                 }
-                            },
-                            text: msg.text,
-                            replyMessage: msg.reply_message ? {
-                                name: msg.reply_message.from.name,
-                                text: msg.reply_message.text,
-                                chatId: msg.reply_message.from.id
-                            } : undefined
-                        }))
+                            };
+                            
+                            // Add photo if available - try different field names for better compatibility
+                            const photoUrl = msg.from.photo || msg.from.avatar || msg.from.avatar_url;
+                            if (photoUrl) {
+                                formattedMsg.from.photo = photoUrl;
+                            }
+                            
+                            // Handle reply message if present
+                            if (msg.reply_message) {
+                                formattedMsg.reply_message = {
+                                    text: msg.reply_message.text,
+                                    from: {
+                                        id: msg.reply_message.from.id,
+                                        name: msg.reply_message.from.name,
+                                        username: msg.reply_message.from.username
+                                    }
+                                };
+                                
+                                // Add photo for replied message if available
+                                const replyPhotoUrl = msg.reply_message.from.photo || msg.reply_message.from.avatar || msg.reply_message.from.avatar_url;
+                                if (replyPhotoUrl) {
+                                    formattedMsg.reply_message.from.photo = replyPhotoUrl;
+                                }
+                            }
+                            
+                            return formattedMsg;
+                        })
                     };
                 }
 
@@ -469,18 +496,27 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                         };
                     }
 
-                    try {
-                        const fallbackResponse = await axios.post('https://bot.lyo.su/quote/generate.webp', fallbackPayload, {
-                            responseType: 'arraybuffer',
-                            timeout: 15000
-                        });
-                        
-                        console.log('✅ Quote generated successfully without profile photos (fallback)');
-                        return fallbackResponse.data;
-                    } catch (fallbackError) {
-                        console.error('❌ Even fallback quote generation failed:', fallbackError.message);
-                        throw fallbackError;
+                    // Try all APIs again without profile photos
+                    for (const fallbackApiUrl of apiEndpoints) {
+                        try {
+                            console.log(`🔄 Trying fallback without photos: ${fallbackApiUrl}`);
+                            const fallbackResponse = await axios.post(fallbackApiUrl, fallbackPayload, {
+                                responseType: 'arraybuffer',
+                                timeout: 15000,
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            });
+                            
+                            console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl}`);
+                            return fallbackResponse.data;
+                        } catch (fallbackError) {
+                            console.warn(`⚠️ Fallback API ${fallbackApiUrl} also failed:`, fallbackError.message);
+                        }
                     }
+                    
+                    console.error('❌ All fallback attempts failed');
+                    throw new Error('All quote generation APIs failed');
                 }
             }
         }
