@@ -257,15 +257,19 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // --- NEW: Get User Profile Photo URL ---
 async function getUserProfilePhotoUrl(botToken, userId) {
+    console.log(`📸 Fetching profile photo for user ${userId}...`);
+    
     // Check cache first
     const cacheKey = `${userId}`;
     const cached = profilePhotoCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-        console.log(`📸 Using cached profile photo for user ${userId}`);
+        console.log(`📸 Using cached profile photo for user ${userId}: ${cached.url ? 'Available' : 'None'}`);
         return cached.url;
     }
+    
     try {
         // Get user profile photos
+        console.log(`🔍 Requesting profile photos from Telegram API for user ${userId}...`);
         const response = await axios.get(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos`, {
             params: {
                 user_id: userId,
@@ -273,17 +277,32 @@ async function getUserProfilePhotoUrl(botToken, userId) {
             },
             timeout: 10000
         });
+        
+        console.log(`📊 Telegram API response for user ${userId}:`, {
+            ok: response.data.ok,
+            total_count: response.data.result?.total_count,
+            photos_available: response.data.result?.photos?.length
+        });
 
         if (response.data.ok && response.data.result.total_count > 0) {
+            console.log(`✅ Found ${response.data.result.total_count} profile photo(s) for user ${userId}`);
+            
             // Get the largest available size for better quality (last element in the array)
             const photoSizes = response.data.result.photos[0];
             const photo = photoSizes[photoSizes.length - 1]; // Get the largest size
             const fileId = photo.file_id;
+            
+            console.log(`🔍 Getting file path for photo with file_id: ${fileId}`);
 
             // Get file path
             const fileResponse = await axios.get(`https://api.telegram.org/bot${botToken}/getFile`, {
                 params: { file_id: fileId },
                 timeout: 10000
+            });
+            
+            console.log(`📊 File API response:`, {
+                ok: fileResponse.data.ok,
+                file_path: fileResponse.data.result?.file_path
             });
 
             if (fileResponse.data.ok) {
@@ -296,19 +315,25 @@ async function getUserProfilePhotoUrl(botToken, userId) {
                     timestamp: Date.now()
                 });
                 
-                console.log(`📸 Profile photo URL retrieved for user ${userId}: ${photoUrl}`);
+                console.log(`📸 Profile photo URL generated for user ${userId}: ${photoUrl}`);
                 
                 // Verify the URL is accessible by making a quick head request
                 try {
-                    await axios.head(photoUrl, { timeout: 5000 });
-                    console.log(`✅ Profile photo URL verified accessible for user ${userId}`);
+                    const verifyResponse = await axios.head(photoUrl, { timeout: 5000 });
+                    console.log(`✅ Profile photo URL verified accessible for user ${userId} (${verifyResponse.status})`);
                     return photoUrl;
                 } catch (verifyError) {
-                    console.warn(`⚠️ Profile photo URL not accessible for user ${userId}:`, verifyError.message);
+                    console.warn(`⚠️ Profile photo URL not accessible for user ${userId}:`, verifyError.response?.status, verifyError.message);
                     // Still return the URL as it might work in the quote API context
                     return photoUrl;
                 }
+            } else {
+                console.warn(`⚠️ Failed to get file path for user ${userId}:`, fileResponse.data);
             }
+        } else if (response.data.ok && response.data.result.total_count === 0) {
+            console.log(`📸 User ${userId} has no profile photos`);
+        } else {
+            console.warn(`⚠️ Unexpected API response for user ${userId}:`, response.data);
         }
         
         // Cache null result to avoid repeated failed requests
@@ -316,9 +341,21 @@ async function getUserProfilePhotoUrl(botToken, userId) {
             url: null,
             timestamp: Date.now()
         });
+        console.log(`📸 No profile photo available for user ${userId}, cached null result`);
         return null;
     } catch (error) {
-        console.error('❌ Failed to get user profile photo:', error.message);
+        console.error(`❌ Failed to get profile photo for user ${userId}:`, {
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            data: error.response?.data,
+            message: error.message
+        });
+        
+        // Cache null result to avoid repeated failed requests
+        profilePhotoCache.set(cacheKey, {
+            url: null,
+            timestamp: Date.now()
+        });
         return null;
     }
 }
@@ -344,12 +381,18 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
         });
         
         // Fetch profile photos for users
+        console.log('📸 Attempting to fetch profile photos...');
         const mainUserPhotoUrl = await getUserProfilePhotoUrl(botToken, message.from.id);
         let repliedUserPhotoUrl = null;
         
         if (repliedToMessage && repliedToMessage.from) {
             repliedUserPhotoUrl = await getUserProfilePhotoUrl(botToken, repliedToMessage.from.id);
         }
+        
+        console.log('📸 Profile photo fetch results:', {
+            mainUser: mainUserPhotoUrl ? 'Found' : 'Not found',
+            repliedUser: repliedUserPhotoUrl ? 'Found' : 'Not found'
+        });
 
         const payload = {
             messages: [{
@@ -367,6 +410,15 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             payload.messages[0].from.photo = mainUserPhotoUrl;
             payload.messages[0].from.avatar = mainUserPhotoUrl;
             payload.messages[0].from.avatar_url = mainUserPhotoUrl;
+            console.log(`✅ Added profile photo for main user: ${mainUserPhotoUrl}`);
+        } else {
+            // Use a fallback avatar based on user's first name initial
+            const initial = (message.from.first_name || 'U').charAt(0).toUpperCase();
+            const fallbackAvatar = `https://ui-avatars.com/api/?name=${initial}&size=150&background=0066cc&color=ffffff&bold=true`;
+            payload.messages[0].from.photo = fallbackAvatar;
+            payload.messages[0].from.avatar = fallbackAvatar;
+            payload.messages[0].from.avatar_url = fallbackAvatar;
+            console.log(`🎭 Using fallback avatar for main user: ${fallbackAvatar}`);
         }
 
         // If the message is a reply, add the replied-to message as a quote in the payload
@@ -385,6 +437,15 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                 payload.messages[0].reply_message.from.photo = repliedUserPhotoUrl;
                 payload.messages[0].reply_message.from.avatar = repliedUserPhotoUrl;
                 payload.messages[0].reply_message.from.avatar_url = repliedUserPhotoUrl;
+                console.log(`✅ Added profile photo for replied user: ${repliedUserPhotoUrl}`);
+            } else {
+                // Use a fallback avatar for replied user
+                const replyInitial = (repliedToMessage.from.first_name || 'U').charAt(0).toUpperCase();
+                const replyFallbackAvatar = `https://ui-avatars.com/api/?name=${replyInitial}&size=150&background=cc6600&color=ffffff&bold=true`;
+                payload.messages[0].reply_message.from.photo = replyFallbackAvatar;
+                payload.messages[0].reply_message.from.avatar = replyFallbackAvatar;
+                payload.messages[0].reply_message.from.avatar_url = replyFallbackAvatar;
+                console.log(`🎭 Using fallback avatar for replied user: ${replyFallbackAvatar}`);
             }
         }
 
@@ -448,6 +509,7 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                             const photoUrl = msg.from.photo || msg.from.avatar || msg.from.avatar_url;
                             if (photoUrl) {
                                 formattedMsg.from.photo = photoUrl;
+                                console.log(`📸 Added photo to quotly payload: ${photoUrl}`);
                             }
                             
                             // Handle reply message if present
@@ -465,6 +527,7 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                                 const replyPhotoUrl = msg.reply_message.from.photo || msg.reply_message.from.avatar || msg.reply_message.from.avatar_url;
                                 if (replyPhotoUrl) {
                                     formattedMsg.reply_message.from.photo = replyPhotoUrl;
+                                    console.log(`📸 Added reply photo to quotly payload: ${replyPhotoUrl}`);
                                 }
                             }
                             
