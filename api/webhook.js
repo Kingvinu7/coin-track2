@@ -326,6 +326,23 @@ async function getUserProfilePhotoUrl(botToken, userId) {
 // --- NEW: Generate Quote Image using external API ---
 async function getQuoteImageUrl(message, repliedToMessage, botToken) {
     try {
+        // Validate input message
+        if (!message || !message.text || !message.from) {
+            console.error('❌ Invalid message data provided to getQuoteImageUrl:', message);
+            return null;
+        }
+        
+        if (message.text.trim() === '') {
+            console.error('❌ Empty message text provided to getQuoteImageUrl');
+            return null;
+        }
+        
+        console.log('🔍 Processing quote request for message:', {
+            text: message.text.substring(0, 100) + (message.text.length > 100 ? '...' : ''),
+            from: message.from.first_name,
+            userId: message.from.id
+        });
+        
         // Fetch profile photos for users
         const mainUserPhotoUrl = await getUserProfilePhotoUrl(botToken, message.from.id);
         let repliedUserPhotoUrl = null;
@@ -339,8 +356,8 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                 text: message.text,
                 from: {
                     id: message.from.id,
-                    name: message.from.first_name,
-                    username: message.from.username
+                    name: message.from.first_name || 'Unknown User',
+                    username: message.from.username || null
                 }
             }]
         };
@@ -464,6 +481,11 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                     }
                 });
                 
+                if (!response.data || response.data.length === 0) {
+                    console.error(`❌ API ${apiUrl} returned empty response`);
+                    throw new Error('Empty response from quote API');
+                }
+                
                 console.log(`✅ Quote generated successfully using ${apiUrl} (${response.data.length} bytes)`);
                 return response.data;
                 
@@ -508,7 +530,12 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                                 }
                             });
                             
-                            console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl}`);
+                            if (!fallbackResponse.data || fallbackResponse.data.length === 0) {
+                                console.error(`❌ Fallback API ${fallbackApiUrl} returned empty response`);
+                                throw new Error('Empty response from fallback quote API');
+                            }
+                            
+                            console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl} (${fallbackResponse.data.length} bytes)`);
                             return fallbackResponse.data;
                         } catch (fallbackError) {
                             console.warn(`⚠️ Fallback API ${fallbackApiUrl} also failed:`, fallbackError.message);
@@ -1378,6 +1405,13 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
         console.error('❌ Refusing to send an empty sticker buffer.');
         return;
     }
+    
+    if (stickerBuffer.length === 0) {
+        console.error('❌ Refusing to send a zero-length sticker buffer.');
+        return;
+    }
+    
+    console.log('📤 Attempting to send sticker with size:', stickerBuffer.length, 'bytes');
 
     const createFormData = (includeThreadId = true) => {
         const formData = new FormData();
@@ -2280,11 +2314,26 @@ export default async function handler(req, res) {
             else if (command === 'quote' || command === 's') {
                 const repliedToMessage = msg.reply_to_message;
                 if (repliedToMessage) {
+                    // Ensure the replied message has proper text content
+                    if (!repliedToMessage.text || repliedToMessage.text.trim() === '') {
+                        await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Cannot create quote from empty message or media-only message.`');
+                        return;
+                    }
+                    
+                    console.log('📝 Creating quote for message:', {
+                        text: repliedToMessage.text,
+                        from: repliedToMessage.from,
+                        messageId: repliedToMessage.message_id
+                    });
+                    
                     const messageToQuote = repliedToMessage;
                     const quoteImageBuffer = await getQuoteImageUrl(messageToQuote, null, BOT_TOKEN);
-                    if (quoteImageBuffer) {
+                    
+                    if (quoteImageBuffer && quoteImageBuffer.length > 0) {
+                        console.log('✅ Quote image generated successfully, size:', quoteImageBuffer.length, 'bytes');
                         await sendStickerToTopic(BOT_TOKEN, chatId, messageThreadId, quoteImageBuffer);
                     } else {
+                        console.error('❌ Quote image buffer is empty or null');
                         await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to generate quote image. Please try again later.`');
                     }
                 } else {
