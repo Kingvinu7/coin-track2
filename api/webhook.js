@@ -1141,7 +1141,7 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
         return;
     }
 
-    try {
+    const createFormData = (includeThreadId = true) => {
         const formData = new FormData();
         formData.append('sticker', stickerBuffer, {
             filename: 'quote_sticker.webp',
@@ -1149,21 +1149,56 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
         });
         formData.append('chat_id', chatId);
 
-        if (messageThreadId && parseInt(messageThreadId) > 0) {
+        if (includeThreadId && messageThreadId && parseInt(messageThreadId) > 0) {
             formData.append('message_thread_id', messageThreadId);
         }
 
-        const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendSticker`, formData, {
-            timeout: 15000,
-            headers: { 'Content-Type': `multipart/form-data; boundary=${formData._boundary}` }
-        });
-        console.log('✅ Sticker sent successfully:', response.data);
-    } catch (error) {
-        console.error('❌ Failed to send sticker:', error.response?.data?.description || error.message);
+        return formData;
+    };
+
+    const trySend = async (formData) => {
         try {
-            await sendMessageToTopic(botToken, chatId, messageThreadId, '`Failed to send sticker. Please try again later.`');
-        } catch (fallbackError) {
-            console.error('❌ Fallback message also failed:', fallbackError.message);
+            const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendSticker`, formData, {
+                timeout: 15000,
+                headers: { 'Content-Type': `multipart/form-data; boundary=${formData._boundary}` }
+            });
+            console.log('✅ Sticker sent successfully:', response.data);
+            return response;
+        } catch (error) {
+            if (error.response) {
+                console.error('Response data:', error.response.data);
+                console.error('Response status:', error.response.status);
+            }
+            throw error;
+        }
+    };
+
+    try {
+        const formData = createFormData(true);
+        return await trySend(formData);
+    } catch (error) {
+        if (error.response && error.response.status === 400 && error.response.data.description.includes('message thread not found')) {
+            console.warn('⚠️ Thread not found for sticker, attempting to send to main chat.');
+            try {
+                const fallbackFormData = createFormData(false);
+                return await trySend(fallbackFormData);
+            } catch (fallbackError) {
+                console.error('❌ Fallback sticker send also failed:', fallbackError.message);
+                try {
+                    await sendMessageToTopic(botToken, chatId, messageThreadId, '`Failed to send sticker. Please try again later.`');
+                } catch (messageError) {
+                    console.error('❌ Fallback message also failed:', messageError.message);
+                }
+                throw fallbackError;
+            }
+        } else {
+            console.error('❌ Failed to send sticker:', error.response?.data?.description || error.message);
+            try {
+                await sendMessageToTopic(botToken, chatId, messageThreadId, '`Failed to send sticker. Please try again later.`');
+            } catch (fallbackError) {
+                console.error('❌ Fallback message also failed:', fallbackError.message);
+            }
+            throw error;
         }
     }
 }
