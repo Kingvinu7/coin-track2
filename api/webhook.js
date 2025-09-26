@@ -296,8 +296,18 @@ async function getUserProfilePhotoUrl(botToken, userId) {
                     timestamp: Date.now()
                 });
                 
-                console.log(`📸 Fetched and cached profile photo for user ${userId}`);
-                return photoUrl;
+                console.log(`📸 Profile photo URL retrieved for user ${userId}: ${photoUrl}`);
+                
+                // Verify the URL is accessible by making a quick head request
+                try {
+                    await axios.head(photoUrl, { timeout: 5000 });
+                    console.log(`✅ Profile photo URL verified accessible for user ${userId}`);
+                    return photoUrl;
+                } catch (verifyError) {
+                    console.warn(`⚠️ Profile photo URL not accessible for user ${userId}:`, verifyError.message);
+                    // Still return the URL as it might work in the quote API context
+                    return photoUrl;
+                }
             }
         }
         
@@ -362,47 +372,117 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
         }
 
         console.log('📸 Quote payload with profile photos:', JSON.stringify(payload, null, 2));
+        
+        // Additional debugging for profile photo URLs
+        if (payload.messages[0].from.photo) {
+            console.log(`🔍 Main user profile photo URL: ${payload.messages[0].from.photo}`);
+        } else {
+            console.log('⚠️ No profile photo URL found for main user');
+        }
+        
+        if (payload.messages[0].reply_message && payload.messages[0].reply_message.from.photo) {
+            console.log(`🔍 Replied user profile photo URL: ${payload.messages[0].reply_message.from.photo}`);
+        } else if (payload.messages[0].reply_message) {
+            console.log('⚠️ No profile photo URL found for replied user');
+        }
 
-        try {
-            const response = await axios.post('https://bot.lyo.su/quote/generate.webp', payload, {
-                responseType: 'arraybuffer', // Request the response as a binary buffer
-                timeout: 15000
-            });
-            // The response.data is the image buffer
-            return response.data;
-        } catch (apiError) {
-            // If the API fails with profile photos, try without them as fallback
-            console.warn('⚠️ Quote API failed with profile photos, trying without photos...');
+        // Try multiple quote generation APIs for better profile photo support
+        const apiEndpoints = [
+            'https://quotly.netorare.codes/generate',
+            'https://bot.lyo.su/quote/generate.webp'
+        ];
+
+        for (let i = 0; i < apiEndpoints.length; i++) {
+            const apiUrl = apiEndpoints[i];
+            console.log(`🔄 Trying quote API ${i + 1}/${apiEndpoints.length}: ${apiUrl}`);
             
-            const fallbackPayload = {
-                messages: [{
-                    text: message.text,
-                    from: {
-                        id: message.from.id,
-                        name: message.from.first_name,
-                        username: message.from.username
-                    }
-                }]
-            };
+            try {
+                // For quotly API, we need to format the payload differently
+                let apiPayload = payload;
+                if (apiUrl.includes('quotly.netorare.codes')) {
+                    // Quotly expects a different format - let's try with entity formatting
+                    apiPayload = {
+                        type: "quote",
+                        format: "webp",
+                        backgroundColor: "#1b1429",
+                        width: 512,
+                        height: 768,
+                        scale: 2,
+                        messages: payload.messages.map(msg => ({
+                            entities: [],
+                            avatar: true,
+                            from: {
+                                id: msg.from.id,
+                                name: msg.from.name,
+                                username: msg.from.username,
+                                photo: {
+                                    url: msg.from.photo || msg.from.avatar || msg.from.avatar_url
+                                }
+                            },
+                            text: msg.text,
+                            replyMessage: msg.reply_message ? {
+                                name: msg.reply_message.from.name,
+                                text: msg.reply_message.text,
+                                chatId: msg.reply_message.from.id
+                            } : undefined
+                        }))
+                    };
+                }
 
-            if (repliedToMessage && repliedToMessage.text) {
-                fallbackPayload.messages[0].reply_message = {
-                    text: repliedToMessage.text,
-                    from: {
-                        id: repliedToMessage.from.id,
-                        name: repliedToMessage.from.first_name,
-                        username: repliedToMessage.from.username
+                const response = await axios.post(apiUrl, apiPayload, {
+                    responseType: 'arraybuffer',
+                    timeout: 15000,
+                    headers: {
+                        'Content-Type': 'application/json'
                     }
-                };
+                });
+                
+                console.log(`✅ Quote generated successfully using ${apiUrl} (${response.data.length} bytes)`);
+                return response.data;
+                
+            } catch (apiError) {
+                console.warn(`⚠️ Quote API ${apiUrl} failed:`, apiError.response?.data?.toString() || apiError.message);
+                
+                // If this was the last API, try fallback without photos
+                if (i === apiEndpoints.length - 1) {
+                    console.warn('⚠️ All quote APIs failed with profile photos, trying fallback without photos...');
+                    
+                    const fallbackPayload = {
+                        messages: [{
+                            text: message.text,
+                            from: {
+                                id: message.from.id,
+                                name: message.from.first_name,
+                                username: message.from.username
+                            }
+                        }]
+                    };
+
+                    if (repliedToMessage && repliedToMessage.text) {
+                        fallbackPayload.messages[0].reply_message = {
+                            text: repliedToMessage.text,
+                            from: {
+                                id: repliedToMessage.from.id,
+                                name: repliedToMessage.from.first_name,
+                                username: repliedToMessage.from.username
+                            }
+                        };
+                    }
+
+                    try {
+                        const fallbackResponse = await axios.post('https://bot.lyo.su/quote/generate.webp', fallbackPayload, {
+                            responseType: 'arraybuffer',
+                            timeout: 15000
+                        });
+                        
+                        console.log('✅ Quote generated successfully without profile photos (fallback)');
+                        return fallbackResponse.data;
+                    } catch (fallbackError) {
+                        console.error('❌ Even fallback quote generation failed:', fallbackError.message);
+                        throw fallbackError;
+                    }
+                }
             }
-
-            const fallbackResponse = await axios.post('https://bot.lyo.su/quote/generate.webp', fallbackPayload, {
-                responseType: 'arraybuffer',
-                timeout: 15000
-            });
-            
-            console.log('✅ Quote generated successfully without profile photos');
-            return fallbackResponse.data;
         }
     } catch (error) {
         console.error('❌ Failed to generate quote image:', error.response?.data?.toString() || error.message);
