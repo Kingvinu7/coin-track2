@@ -18,7 +18,7 @@ class RequestQueue {
         this.queue = [];
         this.processing = false;
         this.lastRequestTime = 0;
-        this.minRequestInterval = 2000; // Minimum 2 seconds between requests
+        this.minRequestInterval = 800; // Minimum 800ms between requests (reduced from 2s)
     }
 
     async addRequest(requestFn) {
@@ -76,8 +76,8 @@ const requestQueue = new RequestQueue();
 async function makeRateLimitedRequest(requestFn, options = {}) {
     const {
         maxRetries = 5,
-        baseDelay = 5000,
-        maxDelay = 60000,
+        baseDelay = 2000, // Reduced from 5000ms to 2000ms
+        maxDelay = 30000, // Reduced from 60000ms to 30000ms
         backoffMultiplier = 2,
         useQueue = true
     } = options;
@@ -129,11 +129,11 @@ async function makeRateLimitedRequest(requestFn, options = {}) {
  * @returns {Promise} - Promise that resolves with the response
  */
 async function makeRateLimitedAxiosRequest(axiosConfig, retryOptions = {}) {
-    // Use more aggressive rate limiting by default
+    // Use optimized rate limiting by default
     const defaultOptions = {
         maxRetries: 5,
-        baseDelay: 5000,
-        maxDelay: 60000,
+        baseDelay: 2000, // Reduced from 5000ms to 2000ms
+        maxDelay: 30000, // Reduced from 60000ms to 30000ms
         backoffMultiplier: 2,
         useQueue: true,
         ...retryOptions
