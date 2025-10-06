@@ -87,10 +87,6 @@ async function getCoinDataWithChanges(symbol) {
                 url: "https://api.coingecko.com/api/v3/search",
                 params: { query: s },
                 timeout: 15000,
-            }, {
-                maxRetries: 3,
-                baseDelay: 1000,
-                maxDelay: 10000
             });
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
             if (bestMatch) {
@@ -109,10 +105,6 @@ async function getCoinDataWithChanges(symbol) {
                 price_change_percentage: "1h,24h,7d,30d",
             },
             timeout: 15000,
-        }, {
-            maxRetries: 3,
-            baseDelay: 1000,
-            maxDelay: 10000
         });
         
         return response.data.length > 0 ? response.data[0] : null;

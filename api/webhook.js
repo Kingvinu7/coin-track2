@@ -854,10 +854,6 @@ export async function getCoinDataWithChanges(symbol) {
                     query: s
                 },
                 timeout: 15000,
-            }, {
-                maxRetries: 3,
-                baseDelay: 1000,
-                maxDelay: 10000
             });
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
             if (bestMatch) {
@@ -880,10 +876,6 @@ export async function getCoinDataWithChanges(symbol) {
                 sparkline: "true"
             },
             timeout: 15000,
-        }, {
-            maxRetries: 3,
-            baseDelay: 1000,
-            maxDelay: 10000
         });
         if (response.data.length > 0) {
             return response.data[0];
@@ -907,10 +899,6 @@ async function getOHLCData(coinId, days) {
                 days: days,
             },
             timeout: 15000,
-        }, {
-            maxRetries: 3,
-            baseDelay: 1000,
-            maxDelay: 10000
         });
         return response.data;
     } catch (e) {
@@ -930,10 +918,6 @@ async function getHistoricalData(coinId) {
                 days: 30,
             },
             timeout: 15000,
-        }, {
-            maxRetries: 3,
-            baseDelay: 1000,
-            maxDelay: 10000
         });
         return response.data.prices;
     } catch (e) {
