@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import axios from 'axios';
+import { makeRateLimitedAxiosRequest } from './rate-limiter.js';
 
 // Mention configuration (same as webhook.js)
 const MENTION_CONFIG = {
@@ -81,9 +82,15 @@ async function getCoinDataWithChanges(symbol) {
     let coinId = priority[s];
     try {
         if (!coinId) {
-            const searchResponse = await axios.get("https://api.coingecko.com/api/v3/search", {
+            const searchResponse = await makeRateLimitedAxiosRequest({
+                method: 'get',
+                url: "https://api.coingecko.com/api/v3/search",
                 params: { query: s },
                 timeout: 15000,
+            }, {
+                maxRetries: 3,
+                baseDelay: 1000,
+                maxDelay: 10000
             });
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
             if (bestMatch) {
@@ -93,18 +100,24 @@ async function getCoinDataWithChanges(symbol) {
 
         if (!coinId) return null;
 
-        const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
+        const response = await makeRateLimitedAxiosRequest({
+            method: 'get',
+            url: "https://api.coingecko.com/api/v3/coins/markets",
             params: {
                 vs_currency: "usd",
                 ids: coinId,
                 price_change_percentage: "1h,24h,7d,30d",
             },
             timeout: 15000,
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 10000
         });
         
         return response.data.length > 0 ? response.data[0] : null;
     } catch (e) {
-        console.error(`Failed to get coin data for ${s}:`, e.message);
+        console.error(`❌ getCoinDataWithChanges failed for ${s}:`, e.message);
         return null;
     }
 }

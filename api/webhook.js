@@ -2,6 +2,7 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import FormData from 'form-data';
+import { makeRateLimitedAxiosRequest } from './rate-limiter.js';
 
 // --- Firebase Initialization ---
 if (!admin.apps.length) {
@@ -829,7 +830,7 @@ const priority = {
 };
 
 // --- Get all coin data in a single API call ---
-async function getCoinDataWithChanges(symbol) {
+export async function getCoinDataWithChanges(symbol) {
     // Add input validation and type conversion
     if (!symbol) {
         console.error('❌ Symbol is required for getCoinDataWithChanges');
@@ -846,11 +847,17 @@ async function getCoinDataWithChanges(symbol) {
     let coinId = priority[s];
     try {
         if (!coinId) {
-            const searchResponse = await axios.get("https://api.coingecko.com/api/v3/search", {
+            const searchResponse = await makeRateLimitedAxiosRequest({
+                method: 'get',
+                url: "https://api.coingecko.com/api/v3/search",
                 params: {
                     query: s
                 },
                 timeout: 15000,
+            }, {
+                maxRetries: 3,
+                baseDelay: 1000,
+                maxDelay: 10000
             });
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
             if (bestMatch) {
@@ -863,7 +870,9 @@ async function getCoinDataWithChanges(symbol) {
             return null;
         }
 
-        const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
+        const response = await makeRateLimitedAxiosRequest({
+            method: 'get',
+            url: "https://api.coingecko.com/api/v3/coins/markets",
             params: {
                 vs_currency: "usd",
                 ids: coinId,
@@ -871,6 +880,10 @@ async function getCoinDataWithChanges(symbol) {
                 sparkline: "true"
             },
             timeout: 15000,
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 10000
         });
         if (response.data.length > 0) {
             return response.data[0];
@@ -886,12 +899,18 @@ async function getCoinDataWithChanges(symbol) {
 // --- ENHANCED: Get OHLC historical data for candlestick charts ---
 async function getOHLCData(coinId, days) {
     try {
-        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/ohlc`, {
+        const response = await makeRateLimitedAxiosRequest({
+            method: 'get',
+            url: `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc`,
             params: {
                 vs_currency: "usd",
                 days: days,
             },
             timeout: 15000,
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 10000
         });
         return response.data;
     } catch (e) {
@@ -903,12 +922,18 @@ async function getOHLCData(coinId, days) {
 // --- Get historical data for chart (fallback for line charts) ---
 async function getHistoricalData(coinId) {
     try {
-        const response = await axios.get(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`, {
+        const response = await makeRateLimitedAxiosRequest({
+            method: 'get',
+            url: `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`,
             params: {
                 vs_currency: "usd",
                 days: 30,
             },
             timeout: 15000,
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 10000
         });
         return response.data.prices;
     } catch (e) {
