@@ -2,6 +2,15 @@ import admin from 'firebase-admin';
 import axios from 'axios';
 import { makeRateLimitedAxiosRequest } from './rate-limiter.js';
 
+// Special rate limiting config for alert checker - fail fast on rate limits
+const ALERT_CHECKER_RATE_LIMIT_CONFIG = {
+    maxRetries: 1, // Only 1 retry for alert checker
+    baseDelay: 2000,
+    maxDelay: 5000,
+    backoffMultiplier: 2,
+    useQueue: false // Don't use queue for alert checker to avoid delays
+};
+
 // Mention configuration (same as webhook.js)
 const MENTION_CONFIG = {
     TARGET_GROUP_ID: -1001354282618,
@@ -87,7 +96,7 @@ async function getCoinDataWithChanges(symbol) {
                 url: "https://api.coingecko.com/api/v3/search",
                 params: { query: s },
                 timeout: 15000,
-            });
+            }, ALERT_CHECKER_RATE_LIMIT_CONFIG);
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
             if (bestMatch) {
                 coinId = bestMatch.id;
@@ -105,7 +114,7 @@ async function getCoinDataWithChanges(symbol) {
                 price_change_percentage: "1h,24h,7d,30d",
             },
             timeout: 15000,
-        });
+        }, ALERT_CHECKER_RATE_LIMIT_CONFIG);
         
         return response.data.length > 0 ? response.data[0] : null;
     } catch (e) {
