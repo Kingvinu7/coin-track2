@@ -2,18 +2,6 @@ import admin from 'firebase-admin';
 import axios from 'axios';
 import { makeRateLimitedAxiosRequest } from './rate-limiter.js';
 
-// Special rate limiting config for alert checker - fail fast on rate limits
-const ALERT_CHECKER_RATE_LIMIT_CONFIG = {
-    maxRetries: 1, // Only 1 retry for alert checker
-    baseDelay: 2000,
-    maxDelay: 5000,
-    backoffMultiplier: 2,
-    useQueue: false // Don't use queue for alert checker to avoid delays
-};
-
-// Circuit breaker for alert checker to prevent infinite retries
-let lastRateLimitTime = 0;
-const RATE_LIMIT_COOLDOWN = 30 * 60 * 1000; // 30 minutes cooldown
 
 // Mention configuration (same as webhook.js)
 const MENTION_CONFIG = {
@@ -100,7 +88,7 @@ async function getCoinDataWithChanges(symbol) {
                 url: "https://api.coingecko.com/api/v3/search",
                 params: { query: s },
                 timeout: 15000,
-            }, ALERT_CHECKER_RATE_LIMIT_CONFIG);
+            });
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
             if (bestMatch) {
                 coinId = bestMatch.id;
@@ -118,15 +106,10 @@ async function getCoinDataWithChanges(symbol) {
                 price_change_percentage: "1h,24h,7d,30d",
             },
             timeout: 15000,
-        }, ALERT_CHECKER_RATE_LIMIT_CONFIG);
+        });
         
         return response.data.length > 0 ? response.data[0] : null;
     } catch (e) {
-        // For alert checker, if we hit rate limits, record it and fail fast
-        if (e.response && e.response.status === 429) {
-            lastRateLimitTime = Date.now();
-            console.error(`🚫 Rate limit hit for ${s} in alert checker - will skip next 30 minutes`);
-        }
         console.error(`❌ getCoinDataWithChanges failed for ${s}:`, e.message);
         return null;
     }
@@ -134,14 +117,6 @@ async function getCoinDataWithChanges(symbol) {
 
 async function checkPriceAlerts() {
     console.log('Checking price alerts...');
-    
-    // Circuit breaker: Skip if we hit rate limits recently
-    const now = Date.now();
-    if (lastRateLimitTime > 0 && (now - lastRateLimitTime) < RATE_LIMIT_COOLDOWN) {
-        const remainingMinutes = Math.ceil((RATE_LIMIT_COOLDOWN - (now - lastRateLimitTime)) / (60 * 1000));
-        console.log(`⏸️ Skipping alert check due to recent rate limiting. Resuming in ${remainingMinutes} minutes.`);
-        return { checked: 0, triggered: 0, skipped: true };
-    }
     
     try {
         const alertsSnapshot = await db.collection('price_alerts')
@@ -289,24 +264,6 @@ Set By: ${usernameText}
 
 export default async function handler(req, res) {
     console.log('Alert checker started at:', new Date().toISOString());
-    
-    // Circuit breaker: Skip if we hit rate limits recently
-    const now = Date.now();
-    if (lastRateLimitTime > 0 && (now - lastRateLimitTime) < RATE_LIMIT_COOLDOWN) {
-        const remainingMinutes = Math.ceil((RATE_LIMIT_COOLDOWN - (now - lastRateLimitTime)) / (60 * 1000));
-        console.log(`⏸️ Skipping alert check due to recent rate limiting. Resuming in ${remainingMinutes} minutes.`);
-        
-        const summary = {
-            success: true,
-            skipped: true,
-            reason: 'Rate limit cooldown',
-            remainingMinutes: remainingMinutes,
-            timestamp: new Date().toISOString()
-        };
-        
-        res.status(200).json(summary);
-        return;
-    }
     
     try {
         const priceResults = await checkPriceAlerts();

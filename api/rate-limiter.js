@@ -99,6 +99,12 @@ class RequestQueue {
 // Global request queue instance
 const requestQueue = new RequestQueue();
 
+// Global circuit breaker to prevent infinite retries
+let globalRateLimitCount = 0;
+let lastGlobalRateLimitTime = 0;
+const GLOBAL_RATE_LIMIT_THRESHOLD = 5; // Max 5 rate limits in 10 minutes
+const GLOBAL_RATE_LIMIT_WINDOW = 10 * 60 * 1000; // 10 minutes
+
 /**
  * Makes an API request with retry logic for rate limiting (429 errors)
  * @param {Function} requestFn - Function that makes the API request
@@ -119,6 +125,17 @@ async function makeRateLimitedRequest(requestFn, options = {}) {
         useQueue = true
     } = options;
 
+    // Check global circuit breaker
+    const now = Date.now();
+    if (now - lastGlobalRateLimitTime > GLOBAL_RATE_LIMIT_WINDOW) {
+        globalRateLimitCount = 0; // Reset counter
+    }
+    
+    if (globalRateLimitCount >= GLOBAL_RATE_LIMIT_THRESHOLD) {
+        console.error(`🚫 Global circuit breaker activated - too many rate limits (${globalRateLimitCount} in 10 minutes)`);
+        throw new Error('Rate limit circuit breaker activated - too many failures');
+    }
+
     let lastError;
     
     // Create a unique key for this request to prevent duplicates
@@ -136,8 +153,12 @@ async function makeRateLimitedRequest(requestFn, options = {}) {
             
             // Check if it's a rate limit error (429)
             if (error.response && error.response.status === 429) {
+                // Increment global rate limit counter
+                globalRateLimitCount++;
+                lastGlobalRateLimitTime = now;
+                
                 if (attempt === maxRetries) {
-                    console.error(`❌ Rate limit exceeded after ${maxRetries + 1} attempts`);
+                    console.error(`❌ Rate limit exceeded after ${maxRetries + 1} attempts - STOPPING RETRIES`);
                     throw error;
                 }
                 
@@ -147,7 +168,14 @@ async function makeRateLimitedRequest(requestFn, options = {}) {
                     maxDelay
                 );
                 
-                console.warn(`⚠️ Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+                console.warn(`⚠️ Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1}) - Global count: ${globalRateLimitCount}`);
+                
+                // Add a maximum retry time limit to prevent infinite retries
+                if (delay > 30000) { // If delay is more than 30 seconds, give up
+                    console.error(`❌ Delay too long (${delay}ms), giving up to prevent infinite retries`);
+                    throw error;
+                }
+                
                 await sleep(delay);
                 continue;
             }
