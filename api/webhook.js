@@ -2985,27 +2985,24 @@ I'll notify you at the specified time.`, 'reminder_set');
                 
                 console.log(`🔍 Found ${tokensToProcess.length} tokens to fetch:`, tokensToProcess);
                 
-                const coinPromises = tokensToProcess.map(async (token) => {
-                    try {
-                        const coin = await getCoinDataWithChanges(token.symbol);
-                        if (coin) {
-                            return {
-                                success: true,
-                                reply: buildReply(coin, token.amount),
-                                symbol: token.symbol,
-                                amount: token.amount
-                            };
-                        } else {
-                            console.log(`⚠️ Coin not found: ${token.symbol} (staying silent)`);
-                            return null; // FIXED: Return null instead of error message
-                        }
-                    } catch (error) {
-                        console.error(`❌ Error fetching ${token.symbol}:`, error.message);
+                // Use batch API call for all coin searches (1-4 coins)
+                const symbols = tokensToProcess.map(token => token.symbol);
+                const batchCoins = await getBatchCoinData(symbols);
+                
+                const results = tokensToProcess.map(token => {
+                    const coin = batchCoins.find(c => c.symbol.toLowerCase() === token.symbol.toLowerCase());
+                    if (coin) {
+                        return {
+                            success: true,
+                            reply: buildReply(coin, token.amount),
+                            symbol: token.symbol,
+                            amount: token.amount
+                        };
+                    } else {
+                        console.log(`⚠️ Coin not found: ${token.symbol} (staying silent)`);
                         return null; // FIXED: Return null instead of error message
                     }
                 });
-                
-                const results = await Promise.all(coinPromises);
                 const validResults = results.filter(r => r !== null);
                 
                 // FIXED: Only send message if we have valid results
