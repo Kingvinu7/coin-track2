@@ -19,11 +19,42 @@ class RequestQueue {
         this.processing = false;
         this.lastRequestTime = 0;
         this.minRequestInterval = 1200; // Minimum 1.2s between requests (increased for better rate limiting)
+        this.activeRequests = new Map(); // Track active requests to prevent duplicates
     }
 
-    async addRequest(requestFn) {
+    async addRequest(requestFn, requestKey = null) {
         return new Promise((resolve, reject) => {
-            this.queue.push({ requestFn, resolve, reject });
+            // Create a unique key for this request if not provided
+            const key = requestKey || `req_${Date.now()}_${Math.random()}`;
+            
+            // Check if this request is already active
+            if (this.activeRequests.has(key)) {
+                console.log(`🔄 Request already active, waiting for existing request: ${key}`);
+                // Wait for the existing request to complete
+                const existingPromise = this.activeRequests.get(key);
+                existingPromise.then(resolve).catch(reject);
+                return;
+            }
+            
+            // Mark this request as active
+            const requestPromise = new Promise((innerResolve, innerReject) => {
+                this.queue.push({ 
+                    requestFn, 
+                    resolve: (result) => {
+                        this.activeRequests.delete(key);
+                        innerResolve(result);
+                        resolve(result);
+                    }, 
+                    reject: (error) => {
+                        this.activeRequests.delete(key);
+                        innerReject(error);
+                        reject(error);
+                    },
+                    key
+                });
+            });
+            
+            this.activeRequests.set(key, requestPromise);
             this.processQueue();
         });
     }
@@ -36,7 +67,7 @@ class RequestQueue {
         this.processing = true;
 
         while (this.queue.length > 0) {
-            const { requestFn, resolve, reject } = this.queue.shift();
+            const { requestFn, resolve, reject, key } = this.queue.shift();
             
             try {
                 // Ensure minimum interval between requests
@@ -48,6 +79,7 @@ class RequestQueue {
                 }
 
                 this.lastRequestTime = Date.now();
+                console.log(`🚀 Processing request: ${key}`);
                 const result = await requestFn();
                 resolve(result);
             } catch (error) {
@@ -89,11 +121,14 @@ async function makeRateLimitedRequest(requestFn, options = {}) {
 
     let lastError;
     
+    // Create a unique key for this request to prevent duplicates
+    const requestKey = `rate_limit_${Date.now()}_${Math.random()}`;
+    
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            // Only use queue for the first attempt, not for retries
-            const response = useQueue && attempt === 0
-                ? await requestQueue.addRequest(requestFn)
+            // Always use queue to prevent duplicate processing
+            const response = useQueue
+                ? await requestQueue.addRequest(requestFn, `${requestKey}_${attempt}`)
                 : await requestFn();
             return response;
         } catch (error) {
