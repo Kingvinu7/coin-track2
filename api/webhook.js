@@ -926,6 +926,71 @@ async function getHistoricalData(coinId) {
     }
 }
 
+// --- Batch coin data function for multiple coins ---
+export async function getBatchCoinData(symbols) {
+    if (!symbols || symbols.length === 0) return [];
+    
+    const s = symbols.map(symbol => String(symbol).toLowerCase().trim()).filter(s => s);
+    if (s.length === 0) return [];
+    
+    try {
+        // First, get coin IDs for all symbols
+        const coinIds = [];
+        const unknownSymbols = [];
+        
+        for (const symbol of s) {
+            let coinId = priority[symbol];
+            if (!coinId) {
+                unknownSymbols.push(symbol);
+            } else {
+                coinIds.push(coinId);
+            }
+        }
+        
+        // Search for unknown symbols
+        if (unknownSymbols.length > 0) {
+            const searchPromises = unknownSymbols.map(symbol => 
+                makeRateLimitedAxiosRequest({
+                    method: 'get',
+                    url: "https://api.coingecko.com/api/v3/search",
+                    params: { query: symbol },
+                    timeout: 15000,
+                }).catch(() => null) // Don't fail the whole batch if one search fails
+            );
+            
+            const searchResults = await Promise.all(searchPromises);
+            searchResults.forEach((result, index) => {
+                if (result && result.data && result.data.coins) {
+                    const bestMatch = result.data.coins.find(c => c.symbol.toLowerCase() === unknownSymbols[index]);
+                    if (bestMatch) {
+                        coinIds.push(bestMatch.id);
+                    }
+                }
+            });
+        }
+        
+        if (coinIds.length === 0) return [];
+        
+        // Get market data for all coins in one request
+        const response = await makeRateLimitedAxiosRequest({
+            method: 'get',
+            url: "https://api.coingecko.com/api/v3/coins/markets",
+            params: {
+                vs_currency: "usd",
+                ids: coinIds.join(','),
+                price_change_percentage: "1h,24h,7d,30d",
+                sparkline: "true"
+            },
+            timeout: 15000,
+        });
+        
+        return response.data || [];
+    } catch (e) {
+        console.error(`❌ getBatchCoinData failed for ${s.join(',')}:`, e.message);
+        return [];
+    }
+}
+
 // --- Get Ethereum Gas Price ---
 async function getEthGasPrice() {
     try {
@@ -1372,13 +1437,11 @@ async function getUserAlerts(userId, chatId) {
                 .where('userId', '==', userId)
                 .where('chatId', '==', String(chatId))
                 .where('isActive', '==', true)
-                .orderBy('createdAt', 'desc')
                 .get(),
             db.collection('time_reminders')
                 .where('userId', '==', userId)
                 .where('chatId', '==', String(chatId))
                 .where('isActive', '==', true)
-                .orderBy('createdAt', 'desc')
                 .get()
         ]);
 
@@ -2099,22 +2162,19 @@ export default async function handler(req, res) {
                     
                     console.log(`🔄 Refreshing ${tokensToFetch.length} tokens:`, tokensToFetch);
                     
-                    const coinPromises = tokensToFetch.map(async (token) => {
-                        try {
-                            const coin = await getCoinDataWithChanges(token.symbol);
-                            if (coin) {
-                                return buildReply(coin, token.amount);
-                            } else {
-                                console.log(`⚠️ Coin not found during refresh: ${token.symbol}`);
-                                return null; // Don't show "not found" messages during refresh
-                            }
-                        } catch (error) {
-                            console.error(`❌ Error refreshing ${token.symbol}:`, error.message);
-                            return null;
+                    // Use batch API call for better performance and rate limiting
+                    const symbols = tokensToFetch.map(token => token.symbol);
+                    const batchCoins = await getBatchCoinData(symbols);
+                    
+                    const results = tokensToFetch.map(token => {
+                        const coin = batchCoins.find(c => c.symbol.toLowerCase() === token.symbol.toLowerCase());
+                        if (coin) {
+                            return buildReply(coin, token.amount);
+                        } else {
+                            console.log(`⚠️ Coin not found during refresh: ${token.symbol}`);
+                            return null; // Don't show "not found" messages during refresh
                         }
                     });
-                    
-                    const results = await Promise.all(coinPromises);
                     const validResults = results.filter(r => r !== null);
                     
                     if (validResults.length > 0) {
