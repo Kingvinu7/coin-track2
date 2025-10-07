@@ -2977,7 +2977,9 @@ I'll notify you at the specified time.`, 'reminder_set');
                 if (tokensToProcess.length > 4) {
                     console.log(`❌ Too many coins requested: ${tokensToProcess.length} (max 4 allowed)`);
                     await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
-                        '`Hey hey, you can\'t search more than 4 coins at a time`');
+                        '`Hey hey, you can\'t search more than 4 coins at a time`', '', {
+                            reply_to_message_id: messageId
+                        });
                     return res.status(200).json({ ok: true });
                 }
                 
