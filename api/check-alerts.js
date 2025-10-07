@@ -11,6 +11,10 @@ const ALERT_CHECKER_RATE_LIMIT_CONFIG = {
     useQueue: false // Don't use queue for alert checker to avoid delays
 };
 
+// Circuit breaker for alert checker to prevent infinite retries
+let lastRateLimitTime = 0;
+const RATE_LIMIT_COOLDOWN = 30 * 60 * 1000; // 30 minutes cooldown
+
 // Mention configuration (same as webhook.js)
 const MENTION_CONFIG = {
     TARGET_GROUP_ID: -1001354282618,
@@ -125,6 +129,14 @@ async function getCoinDataWithChanges(symbol) {
 
 async function checkPriceAlerts() {
     console.log('Checking price alerts...');
+    
+    // Circuit breaker: Skip if we hit rate limits recently
+    const now = Date.now();
+    if (lastRateLimitTime > 0 && (now - lastRateLimitTime) < RATE_LIMIT_COOLDOWN) {
+        const remainingMinutes = Math.ceil((RATE_LIMIT_COOLDOWN - (now - lastRateLimitTime)) / (60 * 1000));
+        console.log(`⏸️ Skipping alert check due to recent rate limiting. Resuming in ${remainingMinutes} minutes.`);
+        return { checked: 0, triggered: 0, skipped: true };
+    }
     
     try {
         const alertsSnapshot = await db.collection('price_alerts')
