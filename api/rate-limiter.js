@@ -18,7 +18,7 @@ class RequestQueue {
         this.queue = [];
         this.processing = false;
         this.lastRequestTime = 0;
-        this.minRequestInterval = 800; // Minimum 800ms between requests (reduced from 2s)
+        this.minRequestInterval = 1200; // Minimum 1.2s between requests (increased for better rate limiting)
     }
 
     async addRequest(requestFn) {
@@ -56,6 +56,11 @@ class RequestQueue {
         }
 
         this.processing = false;
+        
+        // Check if more requests were added while processing
+        if (this.queue.length > 0) {
+            setImmediate(() => this.processQueue());
+        }
     }
 }
 
@@ -82,16 +87,14 @@ async function makeRateLimitedRequest(requestFn, options = {}) {
         useQueue = true
     } = options;
 
-    // Wrap the request function with queue if enabled
-    const wrappedRequestFn = useQueue 
-        ? () => requestQueue.addRequest(requestFn)
-        : requestFn;
-
     let lastError;
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const response = await wrappedRequestFn();
+            // Only use queue for the first attempt, not for retries
+            const response = useQueue && attempt === 0
+                ? await requestQueue.addRequest(requestFn)
+                : await requestFn();
             return response;
         } catch (error) {
             lastError = error;

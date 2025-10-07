@@ -1366,6 +1366,7 @@ async function createTimeReminder(userId, chatId, message, triggerTime, username
 
 async function getUserAlerts(userId, chatId) {
     try {
+        console.log(`🔍 Getting alerts for user ${userId} in chat ${chatId}`);
         const [priceAlertsSnapshot, timeRemindersSnapshot] = await Promise.all([
             db.collection('price_alerts')
                 .where('userId', '==', userId)
@@ -1393,6 +1394,7 @@ async function getUserAlerts(userId, chatId) {
             ...doc.data()
         }));
 
+        console.log(`📊 Found ${priceAlerts.length} price alerts and ${timeReminders.length} time reminders`);
         return { priceAlerts, timeReminders };
     } catch (error) {
         console.error('❌ Error getting user alerts:', error.message);
