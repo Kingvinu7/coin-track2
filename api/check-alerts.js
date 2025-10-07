@@ -122,6 +122,11 @@ async function getCoinDataWithChanges(symbol) {
         
         return response.data.length > 0 ? response.data[0] : null;
     } catch (e) {
+        // For alert checker, if we hit rate limits, record it and fail fast
+        if (e.response && e.response.status === 429) {
+            lastRateLimitTime = Date.now();
+            console.error(`🚫 Rate limit hit for ${s} in alert checker - will skip next 30 minutes`);
+        }
         console.error(`❌ getCoinDataWithChanges failed for ${s}:`, e.message);
         return null;
     }
@@ -284,6 +289,24 @@ Set By: ${usernameText}
 
 export default async function handler(req, res) {
     console.log('Alert checker started at:', new Date().toISOString());
+    
+    // Circuit breaker: Skip if we hit rate limits recently
+    const now = Date.now();
+    if (lastRateLimitTime > 0 && (now - lastRateLimitTime) < RATE_LIMIT_COOLDOWN) {
+        const remainingMinutes = Math.ceil((RATE_LIMIT_COOLDOWN - (now - lastRateLimitTime)) / (60 * 1000));
+        console.log(`⏸️ Skipping alert check due to recent rate limiting. Resuming in ${remainingMinutes} minutes.`);
+        
+        const summary = {
+            success: true,
+            skipped: true,
+            reason: 'Rate limit cooldown',
+            remainingMinutes: remainingMinutes,
+            timestamp: new Date().toISOString()
+        };
+        
+        res.status(200).json(summary);
+        return;
+    }
     
     try {
         const priceResults = await checkPriceAlerts();
