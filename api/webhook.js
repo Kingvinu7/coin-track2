@@ -2973,6 +2973,14 @@ I'll notify you at the specified time.`, 'reminder_set');
             }
             
             if (tokensToProcess.length > 0) {
+                // Check if more than 4 coins are requested
+                if (tokensToProcess.length > 4) {
+                    console.log(`❌ Too many coins requested: ${tokensToProcess.length} (max 4 allowed)`);
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Hey hey, you can\'t search more than 4 coins at a time`');
+                    return res.status(200).json({ ok: true });
+                }
+                
                 console.log(`🔍 Found ${tokensToProcess.length} tokens to fetch:`, tokensToProcess);
                 
                 const coinPromises = tokensToProcess.map(async (token) => {
