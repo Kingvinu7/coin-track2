@@ -98,11 +98,11 @@ function analyzeQuestionAndCreatePrompt(userInput) {
     if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
         systemPrompt = `
 Be a merciless, Deadpool-style roast comedian with zero chill.
-Deliver ONE savage, cutting roast (1–2 sentences max).
+Deliver ONE savage, cutting roast (3-4 sentences max).
 Make it brutally witty, hilariously cruel, and painfully accurate—but still playful.
 A little cuss or mild profanity is allowed for extra bite.
 Always end with "Just kidding!" or a cheeky equivalent.
-Keep it under 350 characters.
+Keep it under 450 characters.
 Push the roast as far as possible while staying funny. `;
     } else if (input.includes('funny') || input.includes('joke') || input.includes('lol') || input.includes('haha') ||
         input.includes('dating') || input.includes('girlfriend') || input.includes('boyfriend') ||
@@ -113,7 +113,7 @@ You are a fun friend giving dating advice with humor.
 - Start with ONE funny observation
 - Give ONE practical tip
 - End with encouragement
-- Total: 4 sentences max, under 350 characters`;
+- Total: 4 sentences max, under 450 characters`;
     } else if (input.includes('help me get') || input.includes('how to impress') || input.includes('what should i say') ||
         input.includes('pick up line') || input.includes('first date') || input.includes('asking out')) {
         systemPrompt = `
@@ -121,7 +121,7 @@ You are a confident wingman giving quick advice.
 - Give ONE key tip immediately
 - Mention ONE thing to avoid
 - End with motivation
-- Total: 4 sentences max, under 350 characters`;
+- Total: 4 sentences max, under 450 characters`;
     } else if (input.includes('how to') || input.includes('how do i') || input.includes('how can i')) {
         systemPrompt = `
 Give concise step-by-step instructions:
@@ -135,44 +135,44 @@ Explain concepts simply:
 - One clear definition sentence
 - One example or analogy
 - Why it matters (optional)
-- Total: 2-3 sentences, under 300 characters`;
+- Total: 2-3 sentences, under 500 characters`;
     } else if (input.includes('why') || input.includes('reason')) {
         systemPrompt = `
 Explain reasoning briefly:
 - Start with main reason
 - Give 1-2 supporting points
 - Keep it simple
-- Total: 2-3 sentences, under 350 characters`;
+- Total: 2-3 sentences, under 450 characters`;
     } else if (input.includes('vs') || input.includes('versus') || input.includes('compare') || input.includes('difference')) {
         systemPrompt = `
 Make a quick comparison:
 - Key difference in one sentence
 - When to choose each (brief)
-- Total: 5,6 sentences max, under 350 characters`;
+- Total: 5,6 sentences max, under 450 characters`;
     } else if (input.includes('best') || input.includes('recommend') || input.includes('suggest') || input.includes('should i')) {
         systemPrompt = `
 Give concise recommendations:
 - Top recommendation with reason
 - Brief alternative (optional)
-- Total: 4-5 sentences, under 300 characters`;
+- Total: 4-5 sentences, under 400 characters`;
     } else if (input.includes('problem') || input.includes('error') || input.includes('fix') || input.includes('solve') || input.includes('troubleshoot')) {
         systemPrompt = `
 Provide quick troubleshooting:
 - Most likely solution first
 - One backup option
-- Total: 4-5 sentences, under 350 characters`;
+- Total: 4-5 sentences, under 450 characters`;
     } else {
         systemPrompt = `
 Be a helpful, concise assistant:
 - Answer directly and clearly
 - Keep it brief and useful
-- Total: 4-5 sentences max, under 300 characters`;
+- Total: 4-5 sentences max, under 400 characters`;
     }
 
     systemPrompt += `
 
 CRITICAL MOBILE-FRIENDLY REQUIREMENTS:
-- Maximum 400 characters total (STRICT LIMIT)
+- Maximum 500 characters total (STRICT LIMIT)
 - Use 4-5 short sentences maximum
 - No markdown formatting (* _ \` [ ] { } etc.)
 - Simple, conversational language
