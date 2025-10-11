@@ -2092,7 +2092,7 @@ Please provide a comprehensive summary that includes:
 Keep the summary concise but informative (around 200-300 words). Format it in a clear, easy-to-read structure.`;
 
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
