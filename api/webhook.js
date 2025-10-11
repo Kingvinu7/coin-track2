@@ -1961,6 +1961,151 @@ function extractMultipleTokens(text) {
     return tokens.length > 0 ? tokens : null;
 }
 
+// --- Chat Summary Feature Functions ---
+
+// Store a message in Firebase for later summarization
+async function storeMessageForSummary(chatId, messageId, userId, username, text, timestamp) {
+    try {
+        if (!text || text.trim() === '' || text.startsWith('/')) {
+            return; // Don't store commands or empty messages
+        }
+
+        const messageData = {
+            messageId,
+            userId,
+            username: username || `User${userId}`,
+            text: text.substring(0, 500), // Limit text length to save space
+            timestamp: timestamp || Date.now(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        await db.collection('chat_messages')
+            .doc(`${chatId}`)
+            .collection('messages')
+            .doc(`${messageId}`)
+            .set(messageData);
+
+        console.log(`💾 Stored message ${messageId} from chat ${chatId}`);
+    } catch (error) {
+        console.error('❌ Error storing message:', error.message);
+    }
+}
+
+// Parse time parameter (e.g., "6h", "1d", "30m", "2w")
+function parseTimeParameter(timeStr) {
+    if (!timeStr) return null;
+
+    const match = timeStr.match(/^(\d+)([mhdw])$/i);
+    if (!match) return null;
+
+    const value = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+
+    const now = Date.now();
+    let milliseconds = 0;
+
+    switch (unit) {
+        case 'm': // minutes
+            milliseconds = value * 60 * 1000;
+            break;
+        case 'h': // hours
+            milliseconds = value * 60 * 60 * 1000;
+            break;
+        case 'd': // days
+            milliseconds = value * 24 * 60 * 60 * 1000;
+            break;
+        case 'w': // weeks
+            milliseconds = value * 7 * 24 * 60 * 60 * 1000;
+            break;
+        default:
+            return null;
+    }
+
+    // Limit to maximum 7 days
+    const maxMilliseconds = 7 * 24 * 60 * 60 * 1000;
+    if (milliseconds > maxMilliseconds) {
+        return { startTime: now - maxMilliseconds, duration: '7d (max)', requested: timeStr };
+    }
+
+    return { startTime: now - milliseconds, duration: timeStr, requested: timeStr };
+}
+
+// Retrieve messages from Firebase within a time range
+async function getMessagesForSummary(chatId, startTime) {
+    try {
+        const messagesRef = db.collection('chat_messages')
+            .doc(`${chatId}`)
+            .collection('messages')
+            .where('timestamp', '>=', startTime)
+            .orderBy('timestamp', 'asc')
+            .limit(500); // Limit to 500 messages max
+
+        const snapshot = await messagesRef.get();
+        
+        if (snapshot.empty) {
+            return [];
+        }
+
+        const messages = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            messages.push({
+                username: data.username,
+                text: data.text,
+                timestamp: data.timestamp
+            });
+        });
+
+        console.log(`📖 Retrieved ${messages.length} messages for summary`);
+        return messages;
+    } catch (error) {
+        console.error('❌ Error retrieving messages:', error.message);
+        return [];
+    }
+}
+
+// Generate summary using Gemini AI
+async function generateChatSummary(messages, duration) {
+    try {
+        if (messages.length === 0) {
+            return 'No messages found in this time period.';
+        }
+
+        // Format messages for summary
+        const formattedMessages = messages.map(msg => {
+            return `${msg.username}: ${msg.text}`;
+        }).join('\n');
+
+        const prompt = `You are summarizing a Telegram group chat conversation. The group is focused on cryptocurrency discussions.
+
+Here are the messages from the last ${duration}:
+
+${formattedMessages}
+
+Please provide a comprehensive summary that includes:
+1. Main topics discussed
+2. Key points and insights shared
+3. Important cryptocurrency mentions or price discussions
+4. Any decisions, plans, or actionable items mentioned
+5. Overall sentiment of the conversation
+
+Keep the summary concise but informative (around 200-300 words). Format it in a clear, easy-to-read structure.`;
+
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const summary = response.text();
+
+        console.log(`✅ Generated summary for ${messages.length} messages`);
+        return summary;
+    } catch (error) {
+        console.error('❌ Error generating summary:', error.message);
+        return 'Failed to generate summary. Please try again later.';
+    }
+}
+
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -2262,6 +2407,16 @@ export default async function handler(req, res) {
         const text = msg.text.trim();
         const user = msg.from;
         const chatType = msg.chat.type;
+
+        // Store message for summary feature (only for group chats, non-command messages)
+        if ((chatType === 'group' || chatType === 'supergroup') && text && !text.startsWith('/')) {
+            const username = user.username || user.first_name || `User${user.id}`;
+            const timestamp = msg.date * 1000; // Convert to milliseconds
+            // Store message asynchronously without blocking the response
+            storeMessageForSummary(chatId, messageId, user.id, username, text, timestamp).catch(err => {
+                console.error('Failed to store message:', err.message);
+            });
+        }
         
         // Log details for commands only
         if (text.startsWith('/')) {
@@ -2921,6 +3076,7 @@ I'll notify you at the specified time.`, 'reminder_set');
 /que [question] - Ask the AI anything, e.g., \`/que what is defi\`
 */quote* or */s* - Reply to a message with this command to create a quote sticker
 /leaderboard - See the top token finders
+*/sum [time]* - Get an AI summary of chat (e.g., \`/sum 6h\`, \`/sum 1d\`)
 
 *NEW: Alerts & Reminders:*
 /alert [symbol] [above/below] [price] - Set price alert, e.g., \`/alert btc above 100000\`
@@ -2953,6 +3109,44 @@ I'll notify you at the specified time.`, 'reminder_set');
             } else if (command === 'test') {
                 await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId,
                     `\`Bot Status: OK\nChat: ${msg.chat.type}\nTopic: ${messageThreadId || "None"}\nTime: ${new Date().toISOString()}\``);
+            } else if (command === 'sum' || command === 'summary') {
+                // Usage: /sum 6h, /sum 1d, /sum 30m
+                const timeParam = parts[1];
+                
+                if (!timeParam) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Usage: /sum [time]\n\nExamples:\n/sum 6h - Last 6 hours\n/sum 1d - Last 1 day\n/sum 30m - Last 30 minutes\n/sum 2w - Last 2 weeks\n\nSupported units: m (minutes), h (hours), d (days), w (weeks)\nMax: 7 days`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                const timeRange = parseTimeParameter(timeParam);
+                
+                if (!timeRange) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        '`Invalid time format. Use formats like: 6h, 1d, 30m, 2w`');
+                    return res.status(200).json({ ok: true });
+                }
+                
+                // Send a "generating" message
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                    `⏳ Generating summary for the last ${timeRange.duration}...`);
+                
+                // Retrieve messages from Firebase
+                const messages = await getMessagesForSummary(chatId, timeRange.startTime);
+                
+                if (messages.length === 0) {
+                    await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, 
+                        `\`No messages found in the last ${timeRange.duration}. The bot may need more time to collect messages.\``);
+                    return res.status(200).json({ ok: true });
+                }
+                
+                // Generate summary using Gemini AI
+                const summary = await generateChatSummary(messages, timeRange.duration);
+                
+                // Format the final message
+                const finalMessage = `*📊 Chat Summary - Last ${timeRange.duration}*\n\n${summary}\n\n_Based on ${messages.length} message${messages.length !== 1 ? 's' : ''}_`;
+                
+                await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, finalMessage, 'summary');
             }
         } else if (isCalculation) {
             const result = evaluateExpression(text);
