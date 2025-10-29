@@ -94,8 +94,104 @@ function analyzeQuestionAndCreatePrompt(userInput) {
     const input = userInput.toLowerCase();
     let systemPrompt = "";
 
-    // Detect FUN/CASUAL/ROAST questions first
-    if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
+    // Detect MATHEMATICAL questions first - highest priority for accuracy
+    if (input.includes('sum') || input.includes('add') || input.includes('plus') || 
+        input.includes('subtract') || input.includes('minus') || input.includes('multiply') || 
+        input.includes('divide') || input.includes('calculate') || input.includes('math') ||
+        input.includes('total') || input.includes('equals') || input.includes('=') ||
+        /[\d\s]*[+\-*/][\d\s]*/.test(input)) {
+        
+        // Try to extract mathematical expressions using multiple strategies
+        
+        // Strategy 1: Direct mathematical expressions (e.g., "5 + 10 + 15")
+        const directMathMatch = input.match(/[\d\s+\-*/.()]+/g);
+        if (directMathMatch) {
+            for (const match of directMathMatch) {
+                const cleanExpression = match.replace(/\s+/g, '');
+                if (/^\d+([+\-*/]\d+)+$/.test(cleanExpression)) {
+                    try {
+                        const result = evaluateExpression(cleanExpression);
+                        if (result !== null) {
+                            return `The user asked for a mathematical calculation. The expression "${cleanExpression}" equals ${result}. Provide this answer clearly and concisely.`;
+                        }
+                    } catch (e) {
+                        // Continue to next strategy
+                    }
+                }
+            }
+        }
+        
+        // Strategy 2: Natural language patterns
+        let expression = null;
+        
+        // "sum of X and Y" or "sum X and Y"
+        const sumMatch = input.match(/sum\s+(?:of\s+)?(\d+)\s+and\s+(\d+)/);
+        if (sumMatch) {
+            expression = `${sumMatch[1]}+${sumMatch[2]}`;
+        }
+        
+        // "add X plus Y plus Z"
+        const addMatch = input.match(/add\s+([\d\s]+(?:plus\s+[\d\s]+)*)/);
+        if (addMatch) {
+            const numbers = addMatch[1].match(/\d+/g);
+            if (numbers && numbers.length > 1) {
+                expression = numbers.join('+');
+            }
+        }
+        
+        // "sum X Y Z" (space-separated numbers)
+        const sumSpaceMatch = input.match(/sum\s+((?:\d+\s*)+)/);
+        if (sumSpaceMatch) {
+            const numbers = sumSpaceMatch[1].match(/\d+/g);
+            if (numbers && numbers.length > 1) {
+                expression = numbers.join('+');
+            }
+        }
+        
+        // "multiply X by Y" or "X times Y"
+        const multiplyMatch = input.match(/(?:multiply\s+(\d+)\s+by\s+(\d+))|(?:(\d+)\s+times\s+(\d+))/);
+        if (multiplyMatch) {
+            const num1 = multiplyMatch[1] || multiplyMatch[3];
+            const num2 = multiplyMatch[2] || multiplyMatch[4];
+            expression = `${num1}*${num2}`;
+        }
+        
+        // "divide X by Y"
+        const divideMatch = input.match(/divide\s+(\d+)\s+by\s+(\d+)/);
+        if (divideMatch) {
+            expression = `${divideMatch[1]}/${divideMatch[2]}`;
+        }
+        
+        // "X minus Y" or "subtract Y from X"
+        const subtractMatch = input.match(/(?:(\d+)\s+minus\s+(\d+))|(?:subtract\s+(\d+)\s+from\s+(\d+))/);
+        if (subtractMatch) {
+            const num1 = subtractMatch[1] || subtractMatch[4];
+            const num2 = subtractMatch[2] || subtractMatch[3];
+            expression = `${num1}-${num2}`;
+        }
+        
+        if (expression) {
+            try {
+                const result = evaluateExpression(expression);
+                if (result !== null) {
+                    return `The user asked for a mathematical calculation. The expression "${expression}" equals ${result}. Provide this answer clearly and concisely.`;
+                }
+            } catch (e) {
+                // Fall through to AI calculation if expression parsing fails
+            }
+        }
+        
+        systemPrompt = `
+You are a precise mathematical calculator assistant:
+- ALWAYS double-check your arithmetic calculations
+- Show the calculation step by step if complex
+- For simple additions, subtractions, multiplications, divisions: be 100% accurate
+- If you're unsure about a calculation, say so
+- Keep response under 400 characters
+- Focus on accuracy over brevity for math problems`;
+    }
+    // Detect FUN/CASUAL/ROAST questions
+    else if (input.includes('roast') || input.includes('insult') || input.includes('burn') || input.includes('savage')) {
         systemPrompt = `
 Be a merciless, Deadpool-style roast comedian with zero chill.
 Deliver ONE savage, cutting roast (3-4 sentences max).
