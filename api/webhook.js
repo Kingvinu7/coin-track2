@@ -994,7 +994,7 @@ export async function getBatchCoinData(symbols) {
 // --- Get Ethereum Gas Price ---
 async function getEthGasPrice() {
     try {
-        const response = await axios.get("https://api.etherscan.io/api", {
+        const response = await axios.get("https://api.etherscan.io/v2/api", {
             params: {
                 module: "gastracker",
                 action: "gasoracle",
