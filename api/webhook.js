@@ -996,6 +996,7 @@ async function getEthGasPrice() {
     try {
         const response = await axios.get("https://api.etherscan.io/v2/api", {
             params: {
+                chainid: "1",
                 module: "gastracker",
                 action: "gasoracle",
                 apikey: process.env.ETHERSCAN_API_KEY,
