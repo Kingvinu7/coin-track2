@@ -423,6 +423,7 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             scale: 2,
             messages: [{
                 text: message.text,
+                avatar: true,
                 from: {
                     id: message.from.id,
                     name: message.from.first_name || 'Unknown User',
