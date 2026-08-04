@@ -2,6 +2,7 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import FormData from 'form-data';
+import sharp from 'sharp';
 import { makeRateLimitedAxiosRequest } from './rate-limiter.js';
 
 // --- Firebase Initialization ---
@@ -1497,6 +1498,30 @@ async function sendStickerToTopic(botToken, chatId, messageThreadId, stickerBuff
     }
 }
 
+async function convertPhotoToSticker(botToken, fileId) {
+    try {
+        const fileInfoRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile`, {
+            params: { file_id: fileId },
+            timeout: 10000
+        });
+        const filePath = fileInfoRes.data.result.file_path;
+        const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+
+        const imageRes = await axios.get(fileUrl, { responseType: 'arraybuffer', timeout: 15000 });
+
+        const stickerBuffer = await sharp(imageRes.data)
+            .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 90 })
+            .toBuffer();
+
+        console.log(`✅ Converted photo to sticker: ${stickerBuffer.length} bytes`);
+        return stickerBuffer;
+    } catch (error) {
+        console.error(`❌ Failed to convert photo to sticker: ${serializeAxiosError(error)}`);
+        return null;
+    }
+}
+
 async function editMessageInTopic(botToken, chatId, messageId, messageThreadId, text, photoUrl, callbackData, showTimeframeButtons = false) {
     const isPhoto = !!photoUrl;
     let replyMarkup;
@@ -2526,6 +2551,19 @@ export default async function handler(req, res) {
                 });
                 
                 if (repliedToMessage) {
+                    // NEW: If replying to a photo, convert it directly to a sticker
+                    if (repliedToMessage.photo && repliedToMessage.photo.length > 0) {
+                        const largestPhoto = repliedToMessage.photo[repliedToMessage.photo.length - 1];
+                        const stickerBuffer = await convertPhotoToSticker(BOT_TOKEN, largestPhoto.file_id);
+
+                        if (stickerBuffer) {
+                            await sendStickerToTopic(BOT_TOKEN, chatId, messageThreadId, stickerBuffer);
+                        } else {
+                            await sendMessageToTopic(BOT_TOKEN, chatId, messageThreadId, '`Failed to convert photo to sticker. Please try again later.`');
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
+
                     // Ensure the replied message has proper text content or is a media message
                     let messageText = repliedToMessage.text || repliedToMessage.caption || '';
                     const isMediaMessage = !!(repliedToMessage.photo || repliedToMessage.video || repliedToMessage.document || repliedToMessage.sticker || repliedToMessage.animation);
