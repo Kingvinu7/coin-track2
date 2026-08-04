@@ -650,7 +650,7 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                 return imageBuffer;
                 
             } catch (apiError) {
-                console.warn(`⚠️ Quote API ${apiUrl} failed:`, apiError.response?.data?.toString() || apiError.message);
+                console.warn(`⚠️ Quote API ${apiUrl} failed: ${serializeAxiosError(apiError)}`);
                 
                 // If this was the last API, try fallback without photos
                 if (i === apiEndpoints.length - 1) {
@@ -733,7 +733,7 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                             console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl} (${fallbackImageBuffer.length} bytes)`);
                             return fallbackImageBuffer;
                         } catch (fallbackError) {
-                            console.warn(`⚠️ Fallback API ${fallbackApiUrl} also failed:`, fallbackError.message);
+                            console.warn(`⚠️ Fallback API ${fallbackApiUrl} also failed: ${serializeAxiosError(fallbackError)}`);
                         }
                     }
                     
@@ -743,7 +743,7 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             }
         }
     } catch (error) {
-        console.error('❌ Failed to generate quote image:', error.response?.data?.toString() || error.message);
+        console.error(`❌ Failed to generate quote image: ${serializeAxiosError(error)}`);
         return null;
     }
 }
