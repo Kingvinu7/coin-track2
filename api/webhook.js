@@ -383,50 +383,43 @@ function serializeAxiosError(err) {
 // --- NEW: Generate Quote Image using external API ---
 async function getQuoteImageUrl(message, repliedToMessage, botToken) {
     try {
-        // Validate input message
         if (!message || !message.from) {
             console.error('❌ Invalid message data provided to getQuoteImageUrl:', message);
             return null;
         }
-        
-        // Ensure we have some text to work with
+
         const messageText = message.text || message.caption || '[Media Message]';
         if (!messageText || messageText.trim() === '') {
-            console.warn('⚠️ No usable text found in message:', {
-                hasText: !!message.text,
-                hasCaption: !!message.caption,
-                textLength: message.text?.length || 0,
-                captionLength: message.caption?.length || 0,
-                messageKeys: Object.keys(message)
-            });
-            // Use a placeholder text for media-only messages
             message.text = '[Media Message]';
         } else if (messageText !== message.text) {
-            // Update message text to use caption if text was empty
             message.text = messageText;
         }
-        
+
         console.log('🔍 Processing quote request for message:', {
             text: message.text.substring(0, 100) + (message.text.length > 100 ? '...' : ''),
             from: message.from.first_name,
             userId: message.from.id
         });
-        
-        // Fetch profile photos for users
+
         console.log('📸 Attempting to fetch profile photos...');
         const mainUserPhotoUrl = await getUserProfilePhotoUrl(botToken, message.from.id);
         let repliedUserPhotoUrl = null;
-        
+
         if (repliedToMessage && repliedToMessage.from) {
             repliedUserPhotoUrl = await getUserProfilePhotoUrl(botToken, repliedToMessage.from.id);
         }
-        
+
         console.log('📸 Profile photo fetch results:', {
             mainUser: mainUserPhotoUrl ? 'Found' : 'Not found',
             repliedUser: repliedUserPhotoUrl ? 'Found' : 'Not found'
         });
 
         const payload = {
+            type: "quote",
+            backgroundColor: "#1b1429",
+            width: 512,
+            height: 768,
+            scale: 2,
             messages: [{
                 text: message.text,
                 from: {
@@ -437,27 +430,18 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
             }]
         };
 
-        // Add profile photo URL if available (try multiple common field names)
         if (mainUserPhotoUrl) {
-            payload.messages[0].from.photo = mainUserPhotoUrl;
-            payload.messages[0].from.avatar = mainUserPhotoUrl;
-            payload.messages[0].from.avatar_url = mainUserPhotoUrl;
+            payload.messages[0].from.photo = { url: mainUserPhotoUrl };
             console.log(`✅ Added profile photo for main user: ${mainUserPhotoUrl}`);
         } else {
-            // Use a fallback avatar based on user's first name initial
             const initial = (message.from.first_name || 'U').charAt(0).toUpperCase();
-            // Use larger size and more prominent styling for better visibility
             const fallbackAvatar = `https://ui-avatars.com/api/?name=${initial}&size=200&background=0066cc&color=ffffff&bold=true&font-size=0.6&rounded=true`;
-            payload.messages[0].from.photo = fallbackAvatar;
-            payload.messages[0].from.avatar = fallbackAvatar;
-            payload.messages[0].from.avatar_url = fallbackAvatar;
-            payload.messages[0].from.profile_pic = fallbackAvatar; // Additional field for better compatibility
-            console.log(`🎭 Using enhanced fallback avatar for main user: ${fallbackAvatar}`);
+            payload.messages[0].from.photo = { url: fallbackAvatar };
+            console.log(`🎭 Using fallback avatar for main user: ${fallbackAvatar}`);
         }
 
-        // If the message is a reply, add the replied-to message as a quote in the payload
         if (repliedToMessage && repliedToMessage.text) {
-            payload.messages[0].reply_message = {
+            payload.messages[0].replyMessage = {
                 text: repliedToMessage.text,
                 from: {
                     id: repliedToMessage.from.id,
@@ -466,288 +450,57 @@ async function getQuoteImageUrl(message, repliedToMessage, botToken) {
                 }
             };
 
-            // Add profile photo URL for replied user if available (try multiple common field names)
             if (repliedUserPhotoUrl) {
-                payload.messages[0].reply_message.from.photo = repliedUserPhotoUrl;
-                payload.messages[0].reply_message.from.avatar = repliedUserPhotoUrl;
-                payload.messages[0].reply_message.from.avatar_url = repliedUserPhotoUrl;
+                payload.messages[0].replyMessage.from.photo = { url: repliedUserPhotoUrl };
                 console.log(`✅ Added profile photo for replied user: ${repliedUserPhotoUrl}`);
             } else {
-                // Use a fallback avatar for replied user
                 const replyInitial = (repliedToMessage.from.first_name || 'U').charAt(0).toUpperCase();
-                // Use larger size and different color for replied user
                 const replyFallbackAvatar = `https://ui-avatars.com/api/?name=${replyInitial}&size=200&background=cc6600&color=ffffff&bold=true&font-size=0.6&rounded=true`;
-                payload.messages[0].reply_message.from.photo = replyFallbackAvatar;
-                payload.messages[0].reply_message.from.avatar = replyFallbackAvatar;
-                payload.messages[0].reply_message.from.avatar_url = replyFallbackAvatar;
-                payload.messages[0].reply_message.from.profile_pic = replyFallbackAvatar; // Additional field
-                console.log(`🎭 Using enhanced fallback avatar for replied user: ${replyFallbackAvatar}`);
+                payload.messages[0].replyMessage.from.photo = { url: replyFallbackAvatar };
+                console.log(`🎭 Using fallback avatar for replied user: ${replyFallbackAvatar}`);
             }
         }
 
-        console.log('📸 Quote payload with profile photos:', JSON.stringify(payload, null, 2));
-        
-        // Additional debugging for profile photo URLs
-        if (payload.messages[0].from.photo) {
-            console.log(`🔍 Main user profile photo URL: ${payload.messages[0].from.photo}`);
-            // Test if the photo URL is accessible
-            try {
-                const photoResponse = await axios.head(payload.messages[0].from.photo, { timeout: 5000 });
-                console.log(`✅ Main user photo URL is accessible (${photoResponse.status})`);
-            } catch (photoError) {
-                console.warn(`⚠️ Main user photo URL may not be accessible:`, photoError.message);
+        console.log('📸 Quote payload:', JSON.stringify(payload, null, 2));
+
+        const apiUrl = 'https://quotsy.onrender.com/generate';
+        console.log(`🔄 Calling quote API: ${apiUrl}`);
+
+        try {
+            const response = await axios.post(apiUrl, payload, {
+                timeout: 20000,
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.data || !response.data.ok || !response.data.result || !response.data.result.image) {
+                console.error('❌ Quote API returned invalid response structure:', response.data);
+                throw new Error('Invalid response structure from quote API');
             }
-        } else {
-            console.log('⚠️ No profile photo URL found for main user');
-        }
-        
-        if (payload.messages[0].reply_message && payload.messages[0].reply_message.from.photo) {
-            console.log(`🔍 Replied user profile photo URL: ${payload.messages[0].reply_message.from.photo}`);
-            // Test if the photo URL is accessible
-            try {
-                const replyPhotoResponse = await axios.head(payload.messages[0].reply_message.from.photo, { timeout: 5000 });
-                console.log(`✅ Replied user photo URL is accessible (${replyPhotoResponse.status})`);
-            } catch (replyPhotoError) {
-                console.warn(`⚠️ Replied user photo URL may not be accessible:`, replyPhotoError.message);
+
+            const base64Image = response.data.result.image;
+            console.log(`🔍 Received base64 image with length: ${base64Image.length}`);
+
+            const imageBuffer = Buffer.from(base64Image, 'base64');
+            console.log(`✅ Converted base64 to buffer: ${imageBuffer.length} bytes`);
+
+            if (!imageBuffer || imageBuffer.length === 0) {
+                throw new Error('Empty image buffer from quote API');
             }
-        } else if (payload.messages[0].reply_message) {
-            console.log('⚠️ No profile photo URL found for replied user');
+
+            console.log(`✅ Quote generated successfully (${imageBuffer.length} bytes)`);
+            return imageBuffer;
+
+        } catch (apiError) {
+            console.error(`❌ Quote API ${apiUrl} failed: ${serializeAxiosError(apiError)}`);
+            throw new Error('Quote generation failed');
         }
 
-        // Try multiple quote generation APIs for better profile photo support
-        const apiEndpoints = [
-            'https://bot.lyo.su/quote/generate.webp',
-            'https://quotly.vercel.app/generate'
-        ];
-
-        for (let i = 0; i < apiEndpoints.length; i++) {
-            const apiUrl = apiEndpoints[i];
-            console.log(`🔄 Trying quote API ${i + 1}/${apiEndpoints.length}: ${apiUrl}`);
-            
-            try {
-                // Format payload based on API type
-                let apiPayload = payload;
-                
-                if (apiUrl.includes('quotly.vercel.app')) {
-                    // Quotly vercel works better with simpler format - use the basic payload but ensure photo field is properly set
-                    apiPayload = {
-                        ...payload,
-                        messages: payload.messages.map(msg => {
-                            const formattedMsg = {
-                                text: msg.text,
-                                from: {
-                                    id: msg.from.id,
-                                    name: msg.from.name,
-                                    username: msg.from.username
-                                }
-                            };
-                            
-                            // Add photo if available - try different field names for better compatibility
-                            const photoUrl = msg.from.photo || msg.from.avatar || msg.from.avatar_url || msg.from.profile_pic;
-                            if (photoUrl) {
-                                formattedMsg.from.photo = photoUrl;
-                                formattedMsg.from.avatar = photoUrl; // Add multiple fields for better compatibility
-                                formattedMsg.from.profile_pic = photoUrl;
-                                console.log(`📸 Added photo to quotly payload: ${photoUrl}`);
-                            }
-                            
-                            // Handle reply message if present
-                            if (msg.reply_message) {
-                                formattedMsg.reply_message = {
-                                    text: msg.reply_message.text,
-                                    from: {
-                                        id: msg.reply_message.from.id,
-                                        name: msg.reply_message.from.name,
-                                        username: msg.reply_message.from.username
-                                    }
-                                };
-                                
-                                // Add photo for replied message if available
-                                const replyPhotoUrl = msg.reply_message.from.photo || msg.reply_message.from.avatar || msg.reply_message.from.avatar_url || msg.reply_message.from.profile_pic;
-                                if (replyPhotoUrl) {
-                                    formattedMsg.reply_message.from.photo = replyPhotoUrl;
-                                    formattedMsg.reply_message.from.avatar = replyPhotoUrl;
-                                    formattedMsg.reply_message.from.profile_pic = replyPhotoUrl;
-                                    console.log(`📸 Added reply photo to quotly payload: ${replyPhotoUrl}`);
-                                }
-                            }
-                            
-                            return formattedMsg;
-                        })
-                    };
-                } else if (apiUrl.includes('bot.lyo.su')) {
-                    // Lyo API uses the full payload format with all fields
-                    console.log(`📸 Using full payload for lyo API with ${payload.messages[0].from.photo ? 'avatar' : 'no avatar'}`);
-                }
-
-                // Different APIs return different response formats
-                let axiosConfig = {
-                    timeout: 15000,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                };
-                
-                // Set response type based on API
-                if (apiUrl.includes('quotly.vercel.app')) {
-                    axiosConfig.responseType = 'json';
-                } else if (apiUrl.includes('bot.lyo.su')) {
-                    axiosConfig.responseType = 'arraybuffer';
-                } else {
-                    axiosConfig.responseType = 'arraybuffer'; // default
-                }
-                
-                const response = await axios.post(apiUrl, apiPayload, axiosConfig);
-                
-                let imageBuffer;
-                
-                if (apiUrl.includes('quotly.vercel.app')) {
-                    // Handle quotly JSON response with base64 image
-                    if (!response.data || !response.data.status || !response.data.data || !response.data.data.image) {
-                        console.error(`❌ Quotly API returned invalid response structure:`, response.data);
-                        throw new Error('Invalid response structure from quotly API');
-                    }
-                    
-                    const base64Image = response.data.data.image;
-                    console.log(`🔍 Quotly returned base64 image with length: ${base64Image.length}`);
-                    
-                    // Convert base64 to buffer
-                    imageBuffer = Buffer.from(base64Image, 'base64');
-                    console.log(`✅ Converted base64 to buffer: ${imageBuffer.length} bytes`);
-                    
-                } else if (apiUrl.includes('bot.lyo.su')) {
-                    // Handle lyo direct binary response
-                    imageBuffer = Buffer.from(response.data);
-                    console.log(`✅ Lyo API returned direct binary response: ${imageBuffer.length} bytes`);
-                    
-                } else {
-                    // Handle other direct binary responses
-                    imageBuffer = Buffer.from(response.data);
-                    console.log(`✅ Got direct binary response: ${imageBuffer.length} bytes`);
-                }
-                
-                if (!imageBuffer || imageBuffer.length === 0) {
-                    console.error(`❌ API ${apiUrl} returned empty image buffer`);
-                    throw new Error('Empty image buffer from quote API');
-                }
-                
-                // Validate that we have a proper image
-                const isValidImage = imageBuffer.length > 100; // Basic size check
-                if (!isValidImage) {
-                    console.error(`❌ API ${apiUrl} returned suspiciously small image: ${imageBuffer.length} bytes`);
-                    throw new Error('Suspiciously small image from quote API');
-                }
-                
-                console.log(`✅ Quote generated successfully using ${apiUrl} (${imageBuffer.length} bytes)`);
-                
-                // Log final success with avatar info
-                const hasAvatarInPayload = !!(apiPayload.messages[0].from.photo || apiPayload.messages[0].from.avatar);
-                console.log(`🎭 Avatar included in final quote: ${hasAvatarInPayload ? 'YES' : 'NO'}`);
-                if (hasAvatarInPayload) {
-                    console.log(`📸 Avatar URL used: ${apiPayload.messages[0].from.photo || apiPayload.messages[0].from.avatar}`);
-                }
-                
-                return imageBuffer;
-                
-            } catch (apiError) {
-                console.warn(`⚠️ Quote API ${apiUrl} failed: ${serializeAxiosError(apiError)}`);
-                
-                // If this was the last API, try fallback without photos
-                if (i === apiEndpoints.length - 1) {
-                    console.warn('⚠️ All quote APIs failed with profile photos, trying fallback without photos...');
-                    
-                    const fallbackPayload = {
-                        messages: [{
-                            text: message.text,
-                            from: {
-                                id: message.from.id,
-                                name: message.from.first_name,
-                                username: message.from.username
-                            }
-                        }]
-                    };
-
-                    if (repliedToMessage && repliedToMessage.text) {
-                        fallbackPayload.messages[0].reply_message = {
-                            text: repliedToMessage.text,
-                            from: {
-                                id: repliedToMessage.from.id,
-                                name: repliedToMessage.from.first_name,
-                                username: repliedToMessage.from.username
-                            }
-                        };
-                    }
-
-                    // Try all APIs again without profile photos
-                    for (const fallbackApiUrl of apiEndpoints) {
-                        try {
-                            console.log(`🔄 Trying fallback without photos: ${fallbackApiUrl}`);
-                            
-                            // Use same response type logic as above
-                            let fallbackAxiosConfig = {
-                                timeout: 15000,
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                }
-                            };
-                            
-                            if (fallbackApiUrl.includes('quotly.vercel.app')) {
-                                fallbackAxiosConfig.responseType = 'json';
-                            } else if (fallbackApiUrl.includes('bot.lyo.su')) {
-                                fallbackAxiosConfig.responseType = 'arraybuffer';
-                            } else {
-                                fallbackAxiosConfig.responseType = 'arraybuffer'; // default
-                            }
-                            
-                            const fallbackResponse = await axios.post(fallbackApiUrl, fallbackPayload, fallbackAxiosConfig);
-                            
-                            let fallbackImageBuffer;
-                            
-                            if (fallbackApiUrl.includes('quotly.vercel.app')) {
-                                // Handle quotly JSON response with base64 image
-                                if (!fallbackResponse.data || !fallbackResponse.data.status || !fallbackResponse.data.data || !fallbackResponse.data.data.image) {
-                                    console.error(`❌ Quotly fallback API returned invalid response structure:`, fallbackResponse.data);
-                                    throw new Error('Invalid response structure from quotly fallback API');
-                                }
-                                
-                                const base64Image = fallbackResponse.data.data.image;
-                                fallbackImageBuffer = Buffer.from(base64Image, 'base64');
-                                console.log(`✅ Fallback: Converted base64 to buffer: ${fallbackImageBuffer.length} bytes`);
-                                
-                            } else if (fallbackApiUrl.includes('bot.lyo.su')) {
-                                // Handle lyo direct binary response
-                                fallbackImageBuffer = Buffer.from(fallbackResponse.data);
-                                console.log(`✅ Fallback: Lyo API returned direct binary response: ${fallbackImageBuffer.length} bytes`);
-                                
-                            } else {
-                                // Handle other direct binary responses
-                                fallbackImageBuffer = Buffer.from(fallbackResponse.data);
-                                console.log(`✅ Fallback: Got direct binary response: ${fallbackImageBuffer.length} bytes`);
-                            }
-                            
-                            if (!fallbackImageBuffer || fallbackImageBuffer.length === 0) {
-                                console.error(`❌ Fallback API ${fallbackApiUrl} returned empty image buffer`);
-                                throw new Error('Empty image buffer from fallback quote API');
-                            }
-                            
-                            console.log(`✅ Quote generated successfully without profile photos using ${fallbackApiUrl} (${fallbackImageBuffer.length} bytes)`);
-                            return fallbackImageBuffer;
-                        } catch (fallbackError) {
-                            console.warn(`⚠️ Fallback API ${fallbackApiUrl} also failed: ${serializeAxiosError(fallbackError)}`);
-                        }
-                    }
-                    
-                    console.error('❌ All fallback attempts failed');
-                    throw new Error('All quote generation APIs failed');
-                }
-            }
-        }
     } catch (error) {
         console.error(`❌ Failed to generate quote image: ${serializeAxiosError(error)}`);
         return null;
     }
 }
-
+                        
 // --- CUSTOM @ALL MENTION CONFIGURATION ---
 const MENTION_CONFIG = {
     // Replace this with your specific group chat ID (including the minus sign)
