@@ -361,6 +361,25 @@ async function getUserProfilePhotoUrl(botToken, userId) {
     }
 }
 
+function serializeAxiosError(err) {
+    if (err.response) {
+        const { status, data } = err.response;
+        let body;
+        if (Buffer.isBuffer(data)) {
+            body = data.toString('utf8').slice(0, 500);
+        } else if (typeof data === 'object') {
+            body = JSON.stringify(data).slice(0, 500);
+        } else {
+            body = String(data).slice(0, 500);
+        }
+        return `HTTP ${status} — ${body}`;
+    }
+    if (err.request) {
+        return `No response received — ${err.code || err.message}`;
+    }
+    return err.message;
+}
+
 // --- NEW: Generate Quote Image using external API ---
 async function getQuoteImageUrl(message, repliedToMessage, botToken) {
     try {
