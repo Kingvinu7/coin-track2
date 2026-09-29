@@ -53,6 +53,10 @@ class RequestQueue {
                     key
                 });
             });
+
+            // Prevent this internal tracking promise from being an "unhandled rejection" —
+            // the real caller's rejection still happens via the outer resolve/reject above.
+            requestPromise.catch(() => {});
             
             this.activeRequests.set(key, requestPromise);
             this.processQueue();
