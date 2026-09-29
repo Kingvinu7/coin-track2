@@ -19,6 +19,11 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// --- CoinGecko headers (Demo API key required as of Sep 2026 to avoid 403s) ---
+const COINGECKO_HEADERS = {
+    'x-cg-demo-api-key': process.env.COINGECKO_API_KEY
+};
+
 // --- FIXED: Comprehensive Markdown V1 escaping for safe Telegram sending ---
 function escapeMarkdown(text) {
     if (!text) return '';
@@ -627,6 +632,7 @@ export async function getCoinDataWithChanges(symbol) {
                 params: {
                     query: s
                 },
+                headers: COINGECKO_HEADERS,
                 timeout: 15000,
             });
             const bestMatch = searchResponse.data.coins.find(c => c.symbol.toLowerCase() === s);
@@ -649,6 +655,7 @@ export async function getCoinDataWithChanges(symbol) {
                 price_change_percentage: "1h,24h,7d,30d",
                 sparkline: "true"
             },
+            headers: COINGECKO_HEADERS,
             timeout: 15000,
         });
         if (response.data.length > 0) {
@@ -672,6 +679,7 @@ async function getOHLCData(coinId, days) {
                 vs_currency: "usd",
                 days: days,
             },
+            headers: COINGECKO_HEADERS,
             timeout: 15000,
         });
         return response.data;
@@ -691,6 +699,7 @@ async function getHistoricalData(coinId) {
                 vs_currency: "usd",
                 days: 30,
             },
+            headers: COINGECKO_HEADERS,
             timeout: 15000,
         });
         return response.data.prices;
@@ -728,6 +737,7 @@ export async function getBatchCoinData(symbols) {
                     method: 'get',
                     url: "https://api.coingecko.com/api/v3/search",
                     params: { query: symbol },
+                    headers: COINGECKO_HEADERS,
                     timeout: 15000,
                 }).catch(() => null) // Don't fail the whole batch if one search fails
             );
@@ -755,6 +765,7 @@ export async function getBatchCoinData(symbols) {
                 price_change_percentage: "1h,24h,7d,30d",
                 sparkline: "true"
             },
+            headers: COINGECKO_HEADERS,
             timeout: 15000,
         });
         
@@ -2443,7 +2454,7 @@ export default async function handler(req, res) {
                                 return { success: true, method: 'Plain Text' };
                             } catch (plainError) {
                                 console.error(`❌ All mention methods failed:`, plainError.message);
-                                return { success: false, error: plainError.message };
+return { success: false, error: plainError.message };
                             }
                         }
                     }
